@@ -1,0 +1,12 @@
+{
+  "name": "feedme",
+  "private": true,
+  "description": "Tailwind CLI only. The compiled stylesheet is committed so deployment needs no Node runtime.",
+  "scripts": {
+    "css": "tailwindcss -i app/static/css/tailwind.css -o app/static/css/app.css --minify",
+    "css:watch": "tailwindcss -i app/static/css/tailwind.css -o app/static/css/app.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.10"
+  }
+}

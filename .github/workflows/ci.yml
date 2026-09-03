@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest
+
+  boot:
+    name: route-marker check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      # Fails the build if any endpoint lacks an explicit auth marker.
+      - run: python scripts/check_boot.py
+
+  stylesheet:
+    name: compiled stylesheet is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run css
+      # The compiled stylesheet is committed so deployment needs no Node.
+      - name: Fail if app.css is out of date with tailwind.css
+        run: git diff --exit-code app/static/css/app.css
