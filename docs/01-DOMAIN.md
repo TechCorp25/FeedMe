@@ -86,9 +86,14 @@ AllergenBlock:
                                      | pecan | pine_nut | pistachio | walnut
   sulphites_declared bool            true if ≥10 mg/kg
   chef_note         str | None       free text, additive only, never a substitute
-  reviewed_at       datetime
-  reviewed_by       str
+  reviewed_at       datetime | None  null until the chef allergen editor reviews it
+  reviewed_by       str | None       null until reviewed; required once reviewed_at is set
 ```
+
+Both review fields are nullable and move together. An unreviewed block genuinely
+has neither, and the pair is enforced by a validator rather than by a non-null
+default: a sentinel would put a fabricated reviewer's name on a compliance
+record.
 
 `AllergenCode` enum:
 
@@ -102,11 +107,33 @@ Rules, enforced in code:
 - Crustacea, mollusc and fish are **three separate declarations**. Never collapsed.
 - `cereals_gluten` present ⇒ `gluten_cereals` non-empty. Validation error otherwise.
 - `tree_nuts` present ⇒ `tree_nut_species` non-empty. Validation error otherwise.
-- An item with **no** allergen review (`reviewed_at is None`) cannot be published to customers.
+- `reviewed_at` set ⇒ `reviewed_by` non-empty. Validation error otherwise. An unreviewed block carries `None` in both fields; there is no placeholder reviewer.
+- An allergen code is never in both `contains` and `may_contain`. Validation error otherwise — a declared allergen is not simultaneously a cross-contact risk.
+- An item with **no** allergen review (`reviewed_at is None`) cannot be published to customers. See *Publication* below.
 - The tab renders "No declared allergens" only when the block has been reviewed and `contains` is empty. An unreviewed item never renders that phrase.
 - Allergen fields are never modified by any code path except the chef allergen editor.
 
 > Verify the enum against the current text of FSANZ Standard 1.2.3 before go-live. The list above reflects the PEAL requirements but food standards are amended; treat this file as a starting point, not a legal source.
+
+## Publication
+
+There is **no `is_published` field.** Publication is derived, not stored:
+
+```
+published  ==  is_available and not is_archived and allergens.reviewed_at is not None
+```
+
+`is_available` and `is_archived` already encode the chef's two independent
+decisions, and the allergen review is the compliance gate over both. A stored
+fourth flag would be a state that can disagree with the other three, and the
+disagreement would be invisible until a customer saw an item the chef believed
+was withdrawn.
+
+Enforced in the shared item model: making an item visible to customers while its
+allergen block is unreviewed is a validation error, not a runtime filter. The
+customer-facing repository reads apply the same predicate as a query
+(`is_available: true, is_archived: false`), so an unreviewed item cannot reach a
+browse page even if one were written directly to the collection.
 
 ## Preference flags — not allergens
 
