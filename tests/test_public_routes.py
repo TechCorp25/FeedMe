@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -63,6 +64,20 @@ def test_the_theme_toggle_is_hidden_until_javascript_reveals_it(client):
     html = client.get("/").get_data(as_text=True)
     assert "data-theme-toggle" in html
     assert re.search(r"data-theme-toggle\s+hidden", html)
+
+
+def test_the_hidden_attribute_survives_the_compiled_stylesheet():
+    """The markup alone is not enough to keep a `hidden` control hidden.
+
+    A component-layer `display` from @apply beats the user-agent
+    `[hidden] { display: none }` at equal specificity, so the stylesheet
+    has to assert it. Without this rule the theme toggle paints for a
+    visitor whose JavaScript never runs.
+    """
+    stylesheet = (
+        Path(__file__).resolve().parents[1] / "app/static/css/app.css"
+    ).read_text()
+    assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important", stylesheet)
 
 
 def test_unknown_page_renders_the_404_template(client):

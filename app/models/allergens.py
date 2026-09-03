@@ -115,6 +115,55 @@ class AllergenBlock(EmbeddedModel):
         return self.reviewed_at is not None
 
     @property
+    def contains_labels(self) -> list[str]:
+        """Display strings for `contains`, species named inline.
+
+        03-FRONTEND.md requires the gluten cereals and tree nut species to
+        read inside their own chip, and forbids abbreviating an allergen
+        name. Building the string here rather than in Jinja keeps the
+        compliance wording under test.
+        """
+        detail = {
+            AllergenCode.CEREALS_GLUTEN: [
+                GLUTEN_CEREAL_LABELS[cereal] for cereal in self.gluten_cereals
+            ],
+            AllergenCode.TREE_NUTS: [
+                TREE_NUT_LABELS[species] for species in self.tree_nut_species
+            ],
+        }
+        labels = []
+        for code in self.contains:
+            named = detail.get(code)
+            label = ALLERGEN_LABELS[code]
+            labels.append(f"{label} ({', '.join(named)})" if named else label)
+        return labels
+
+    @property
+    def sulphites_threshold_note(self) -> str | None:
+        """Threshold wording for a declared sulphites entry, or None.
+
+        `sulphites_declared` records that the level reaches the 10 mg/kg
+        labelling threshold; `contains` is what actually declares the
+        allergen. The note therefore qualifies an existing declaration and
+        never stands in for one — a block whose flag is set without the
+        matching `contains` entry is a data defect for the chef allergen
+        editor to prevent, not something a customer page invents a
+        declaration to cover.
+        """
+        if not (self.sulphites_declared and AllergenCode.SULPHITES in self.contains):
+            return None
+        return "Sulphites are present at 10 mg/kg or above."
+
+    @property
+    def may_contain_labels(self) -> list[str]:
+        """Display strings for `may_contain`.
+
+        Species detail belongs to a positive declaration only, so a
+        cross-contact entry carries the allergen name alone.
+        """
+        return [ALLERGEN_LABELS[code] for code in self.may_contain]
+
+    @property
     def declares_nothing(self) -> bool:
         """True only for a reviewed block with an empty `contains` list.
 

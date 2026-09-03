@@ -1,0 +1,96 @@
+{# Catalogue card and the filter strip. Shared by both catalogues. #}
+
+{% macro item_card(item, detail_url) %}
+  <li class="card">
+    <article class="card__body">
+      <h2 class="card__title">
+        <a class="card__link" href="{{ detail_url }}">{{ item.name }}</a>
+      </h2>
+      {% if item.summary %}
+        <p class="card__summary">{{ item.summary }}</p>
+      {% endif %}
+      <p class="card__price">
+        <span class="card__amount">{{ item.price_cents | price }}</span>
+        <span class="card__unit">{{ item.unit_label }}</span>
+      </p>
+      {% if item.preference_flag_labels or item.spice_level %}
+        {# Taste metadata only. Allergen data lives on the detail page's
+           allergen tab and is never summarised into a card chip. #}
+        <ul class="chip-list chip-list--compact">
+          {% for label in item.preference_flag_labels %}
+            <li class="chip">{{ label }}</li>
+          {% endfor %}
+          {% if item.spice_level %}
+            <li class="chip">Heat: {{ item.spice_label }}</li>
+          {% endif %}
+        </ul>
+      {% endif %}
+      <p class="card__allergen-lede">
+        {%- if item.allergens.declares_nothing -%}
+          No declared allergens — full declaration on the item page.
+        {%- else -%}
+          Full allergen declaration on the item page.
+        {%- endif -%}
+      </p>
+    </article>
+  </li>
+{% endmacro %}
+
+
+{#
+  A plain GET form: it submits without JavaScript, and every filtered view
+  is a URL that can be linked, bookmarked and shared.
+#}
+{% macro component_filters(browse) %}
+  <form class="filters" method="get" action="{{ url_for('public.components') }}">
+    <h2 class="filters__heading">Filter</h2>
+
+    {% if browse.category_choices %}
+      <div class="filters__group">
+        <label class="filters__label" for="filter-category">Category</label>
+        <select class="filters__select" id="filter-category" name="category">
+          <option value="">All categories</option>
+          {% for choice in browse.category_choices %}
+            <option
+              value="{{ choice.value }}"
+              {{ 'selected' if choice.selected else '' }}
+            >{{ choice.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    {% if browse.preference_choices %}
+      <fieldset class="filters__group">
+        <legend class="filters__label">Preferences</legend>
+        <ul class="filters__options">
+          {% for choice in browse.preference_choices %}
+            <li class="filters__option">
+              <input
+                type="checkbox"
+                id="filter-preference-{{ choice.value }}"
+                name="preference"
+                value="{{ choice.value }}"
+                {{ 'checked' if choice.selected else '' }}
+              >
+              <label for="filter-preference-{{ choice.value }}">{{ choice.label }}</label>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="filters__hint">
+          These are taste and dietary preferences, not allergen information.
+          Always read the allergen declaration on the item page.
+        </p>
+      </fieldset>
+    {% endif %}
+
+    <div class="filters__actions">
+      <button class="btn" type="submit">Apply filters</button>
+      {% if browse.filters.is_active %}
+        <a class="btn btn--ghost" href="{{ url_for('public.components') }}">
+          Clear filters
+        </a>
+      {% endif %}
+    </div>
+  </form>
+{% endmacro %}

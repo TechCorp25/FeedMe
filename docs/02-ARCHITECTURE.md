@@ -116,7 +116,9 @@ STORAGE_LOCAL_PATH
 BASE_URL
 ```
 
-Production config asserts every required variable is present at import time and refuses to start otherwise. Never fall back to a development secret.
+Production config asserts every required variable is present **when the config object is constructed** — `load_config()` / `ProductionConfig()`, which `create_app` calls before anything else touches the environment — and refuses to start otherwise. Never fall back to a development secret.
+
+The assertion is deliberately not at import time. `import app.config` must succeed in a shell, in tooling and during test collection without a full production environment; an import-time assertion would make the configuration tests themselves unrunnable. Construction is the earliest point that still leaves the module importable.
 
 ## Errors and logging
 

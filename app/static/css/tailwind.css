@@ -34,6 +34,30 @@
     line-height: 1.15;
   }
 
+  /* The `hidden` attribute wins over any component class.
+
+     Without this a control carrying `hidden` — the theme toggle, which is
+     only revealed once its module runs — still paints, because a
+     component-layer `display` from @apply beats the user-agent
+     `[hidden] { display: none }` at equal specificity. A JS-less visitor
+     would be shown a dead button. */
+  [hidden] {
+    display: none !important;
+  }
+
+  /* Hidden visually, still read by a screen reader and still focusable. */
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   /* Honour the user's motion preference; never disable function. */
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -81,6 +105,17 @@
     @apply text-lg font-semibold text-ink no-underline;
   }
 
+  .site-nav {
+    @apply mr-auto flex items-center gap-2;
+  }
+
+  .site-nav__link {
+    @apply inline-flex min-h-touch items-center rounded-md px-3 text-ink
+           underline underline-offset-4
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+
   .page {
     @apply mx-auto w-full max-w-5xl px-4 py-8 landscapeShort:py-4;
     padding-left: max(1rem, env(safe-area-inset-left));
@@ -97,6 +132,273 @@
 
   .page__note {
     @apply mt-4 max-w-prose text-sm text-muted;
+  }
+
+  /* --- catalogue ---------------------------------------------------- */
+
+  .catalogue__count {
+    @apply mt-6 text-sm text-muted;
+  }
+
+  /* 1 column on a small phone, 2 from sm, 3 from lg, 4 from xl
+     (03-FRONTEND.md). */
+  .catalogue-grid {
+    @apply mt-3 grid list-none grid-cols-1 gap-4 p-0
+           sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
+  }
+
+  .card {
+    @apply rounded-lg border border-line bg-raised;
+  }
+
+  .card__body {
+    @apply flex h-full flex-col gap-2 p-4;
+  }
+
+  .card__title {
+    @apply text-lg font-semibold text-ink;
+  }
+
+  .card__link {
+    /* The whole title is the touch target, not an icon beside it. */
+    @apply inline-flex min-h-touch items-center text-ink underline
+           underline-offset-4
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+
+  .card__summary {
+    @apply text-sm text-ink;
+  }
+
+  .card__price {
+    @apply mt-auto flex items-baseline gap-2 pt-2;
+  }
+
+  .card__amount,
+  .item-header__amount {
+    @apply text-lg font-semibold text-ink;
+  }
+
+  .card__unit,
+  .item-header__unit {
+    @apply text-sm text-muted;
+  }
+
+  .card__allergen-lede {
+    @apply text-xs text-muted;
+  }
+
+  .breadcrumb {
+    @apply mb-4 text-sm;
+  }
+
+  .breadcrumb a {
+    @apply inline-flex min-h-touch items-center text-ink underline
+           underline-offset-4;
+  }
+
+  .item-header {
+    @apply flex flex-col gap-3 border-b border-line pb-6;
+  }
+
+  .item-header__price {
+    @apply flex items-baseline gap-2;
+  }
+
+  .item-header__description {
+    @apply max-w-prose text-base text-ink;
+  }
+
+  /* --- chips -------------------------------------------------------- */
+
+  .chip-list {
+    @apply flex list-none flex-wrap gap-2 p-0;
+  }
+
+  .chip-list--compact {
+    @apply gap-1.5;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full border border-line bg-surface
+           px-3 py-1 text-sm text-ink;
+  }
+
+  /* Allergen chips are compliance content: high contrast, never colour
+     alone, never abbreviated (03-FRONTEND.md). */
+  .chip--contains {
+    @apply border-allergen-contains bg-transparent font-semibold
+           text-allergen-contains;
+  }
+
+  .chip--may {
+    @apply border-allergen-may bg-transparent text-allergen-may;
+  }
+
+  /* --- tabs --------------------------------------------------------- */
+
+  .item-tabs {
+    @apply mt-6;
+  }
+
+  /* Horizontal scroller on small and rotated viewports: never wraps to two
+     rows, never collapses into a <select> (03-FRONTEND.md). */
+  .tab-strip {
+    @apply -mx-4 flex snap-x snap-mandatory gap-1 overflow-x-auto
+           border-b border-line px-4 sm:mx-0 sm:px-0;
+    scrollbar-width: thin;
+  }
+
+  .tab {
+    @apply inline-flex min-h-touch shrink-0 snap-start items-center
+           whitespace-nowrap rounded-t-md border-b-2 border-transparent px-4
+           text-ink no-underline
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:-outline-offset-2 focus-visible:outline-accent;
+  }
+
+  .tab[aria-selected='true'] {
+    @apply border-accent font-semibold;
+  }
+
+  .tab-panel {
+    @apply border-b border-line py-6
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
+    scroll-margin-top: 4rem;
+  }
+
+  .tab-panel__heading {
+    @apply text-xl font-semibold text-ink;
+  }
+
+  .tab-panel__subheading,
+  .allergens__heading {
+    @apply mt-5 text-base font-semibold text-ink;
+  }
+
+  .tab-panel__note,
+  .allergens__note,
+  .allergens__reviewed {
+    @apply mt-3 max-w-prose text-sm text-muted;
+  }
+
+  .notice {
+    @apply mt-3 max-w-prose rounded-md border border-line bg-raised p-3
+           text-sm text-ink;
+  }
+
+  /* Neutral, never alarming, and never the words 'no allergens'. */
+  .notice--pending {
+    @apply border-dashed text-muted;
+  }
+
+  /* --- item content ------------------------------------------------- */
+
+  .ingredients,
+  .steps {
+    @apply mt-3 flex list-none flex-col gap-2 p-0;
+  }
+
+  .steps {
+    @apply list-decimal pl-5;
+  }
+
+  .ingredients__item,
+  .steps__item {
+    @apply max-w-prose text-base text-ink;
+  }
+
+  .ingredients__name {
+    @apply font-medium;
+  }
+
+  .ingredients__quantity,
+  .ingredients__optional,
+  .ingredients__note {
+    @apply text-sm text-muted;
+  }
+
+  /* Separate the parts of an ingredient line so quantity, optionality and
+     note do not read as one run-on phrase. */
+  .ingredients__quantity::before,
+  .ingredients__optional::before,
+  .ingredients__note::before {
+    content: " · ";
+    @apply text-line;
+  }
+
+  .ingredients__optional {
+    @apply italic;
+  }
+
+  .spec-list {
+    @apply mt-3 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-[auto_1fr];
+  }
+
+  .spec-list dt {
+    @apply text-sm font-semibold text-muted;
+  }
+
+  .spec-list dd {
+    @apply m-0 text-base text-ink;
+  }
+
+  /* --- filters ------------------------------------------------------ */
+
+  .filters {
+    @apply mt-6 flex flex-col gap-4 rounded-lg border border-line bg-raised p-4;
+  }
+
+  .filters__heading {
+    @apply text-base font-semibold text-ink;
+  }
+
+  .filters__group {
+    @apply m-0 flex flex-col gap-2 border-0 p-0;
+  }
+
+  .filters__label {
+    @apply text-sm font-semibold text-ink;
+  }
+
+  .filters__select {
+    @apply min-h-touch w-full max-w-xs rounded-md border border-line
+           bg-surface px-3 text-ink
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+
+  .filters__options {
+    @apply flex list-none flex-wrap gap-x-6 gap-y-1 p-0;
+  }
+
+  .filters__option {
+    @apply flex min-h-touch items-center gap-2 text-base text-ink;
+  }
+
+  .filters__option input,
+  .filters__option label {
+    /* The row is already 44px tall; make the box and its label the full
+       height of it so the whole row is the target, not just the box. */
+    @apply min-h-touch cursor-pointer self-stretch;
+  }
+
+  .filters__option input {
+    @apply w-5 accent-accent;
+  }
+
+  .filters__option label {
+    @apply flex items-center;
+  }
+
+  .filters__hint {
+    @apply max-w-prose text-sm text-muted;
+  }
+
+  .filters__actions {
+    @apply flex flex-wrap gap-3;
   }
 
   .site-footer {
