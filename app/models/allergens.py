@@ -148,7 +148,8 @@ class AllergenBlock(EmbeddedModel):
         never stands in for one — a block whose flag is set without the
         matching `contains` entry is a data defect for the chef allergen
         editor to prevent, not something a customer page invents a
-        declaration to cover.
+        declaration to cover. The cross-validator that would prevent it is
+        deferred to that editor and recorded in 04-WORKFLOWS.md.
         """
         if not (self.sulphites_declared and AllergenCode.SULPHITES in self.contains):
             return None

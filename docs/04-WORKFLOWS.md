@@ -92,6 +92,18 @@ Full CRUD. Create, edit, archive, reorder, toggle availability. Dish editor incl
 - An item cannot be published while `reviewed_at is None`.
 - Editing ingredients on an already-reviewed item flags the allergen block as stale and surfaces a re-review prompt. It does not silently invalidate the item, and it does not unpublish it — it prompts.
 
+*Deferred, owned by this editor:* `sulphites_declared` and `contains` are not
+cross-validated. A block can set the flag without listing `sulphites` in
+`contains`, and the customer page deliberately renders nothing in that case —
+`AllergenBlock.sulphites_threshold_note` qualifies a declaration and never
+invents one. That leaves the defect visible to nobody. The rule belongs here,
+in the one code path allowed to write the block, and as a model validator
+alongside the `cereals_gluten` and `tree_nuts` rules in 01-DOMAIN.md. It was
+not added with the read-only catalogue slice because a cross-validator changes
+the model contract, and a browse-and-detail change has no business altering
+compliance semantics. Decide the direction when building this editor: either
+the flag requires the `contains` entry, or setting the flag adds it.
+
 **Ledger** — `/chef/customers/<user_id>/ledger`
 View entries, add manual `adjustment` or `credit` entries with a description. Entries are append-only; corrections are new offsetting entries, never edits or deletes.
 

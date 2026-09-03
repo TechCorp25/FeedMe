@@ -49,6 +49,15 @@ npm run css        # or: npm run css:watch
 
 CI fails if the committed stylesheet is out of date with its source.
 
+`tests/test_stylesheet_cascade.py` reads the compiled file and resolves the
+cascade over it. It exists because a template test cannot catch a stylesheet
+rule that out-ranks the user-agent sheet: Tailwind's preflight resets the
+`hidden` attribute through `:where()`, which contributes no specificity, so
+any `@apply` that sets `display` on a component primitive — `.btn`, `.chip`
+and `.tab` all do — would otherwise leave a `hidden` control painted on the
+page. Every class in the compiled sheet that declares `display` is discovered
+and checked, so a primitive added later is covered automatically.
+
 ## Tests
 
 ```bash
@@ -67,12 +76,37 @@ Boots the application and prints every route with its auth marker. It
 exits non-zero if any endpoint lacks one — the same check that runs
 inside `create_app`.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs three jobs on every pull request:
+
+| Check name | Fails when |
+|---|---|
+| `pytest` | any test fails |
+| `route-marker check` | an endpoint lacks an explicit auth marker |
+| `compiled stylesheet is current` | `app.css` is out of date with `tailwind.css` |
+
+These are advisory until they are named as required status checks in the
+branch protection rule for `main`. Until then a red build does not stop a
+merge, and the checks report rather than enforce.
+
 ## What is built so far
 
 The application skeleton, the Pydantic schema of record, the repository
-layer with its tenancy contract, the order state machine, and two
-proof-of-life routes: `GET /` (server-rendered, works with JavaScript
-disabled) and `GET /health` (liveness plus a database round-trip).
+layer with its tenancy contract, the order state machine, and the
+read-only public catalogue:
 
-The catalogue browse pages, item detail view, cart, checkout and
-chef-admin screens are not built yet.
+| Route | |
+|---|---|
+| `GET /` | landing page, server-rendered |
+| `GET /health` | liveness plus a database round-trip |
+| `GET /components` | components browse, filtered by a plain GET form |
+| `GET /components/<slug>` | one component, all four tab panels in the HTML |
+
+Next slice: **dishes browse and detail, with meal-type filtering.** The two
+go together — filtering by meal type is the same query shape as the dish
+listing itself, and splitting them would mean writing the query twice.
+
+Not built: cart, checkout, the customer account area, and every chef-admin
+screen — the catalogue editors, the allergen editor, the order queue, the
+prep sheet and the ledger.
