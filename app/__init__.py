@@ -43,6 +43,7 @@ def create_app(
     app.config["BOOTSTRAP_INDEXES"] = getattr(resolved, "BOOTSTRAP_INDEXES", True)
 
     _init_extensions(app, mongo_client)
+    _register_template_filters(app)
     _register_blueprints(app)
     _register_error_handlers(app)
 
@@ -66,6 +67,15 @@ def _init_extensions(app: Flask, mongo_client: MongoClient | None) -> None:
         from app.db.repositories.users import get_user
 
         return get_user(user_id)
+
+
+def _register_template_filters(app: Flask) -> None:
+    """Presentation-only helpers. The rule they encode lives in a service."""
+    from app.services.pricing import format_price_aud
+
+    # Templates render money through the same formatter as everything
+    # else, so integer minor units are never re-implemented in Jinja.
+    app.jinja_env.filters["price"] = format_price_aud
 
 
 def _register_blueprints(app: Flask) -> None:

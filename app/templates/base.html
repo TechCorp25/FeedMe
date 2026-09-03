@@ -20,6 +20,7 @@
       })();
     </script>
     <script type="module" src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    {% block head_scripts %}{% endblock %}
   </head>
   <body class="min-h-full bg-surface text-ink antialiased">
     <a class="skip-link" href="#main">Skip to content</a>
@@ -27,6 +28,9 @@
     <header class="site-header">
       <div class="site-header__inner">
         <a class="site-header__brand" href="{{ url_for('public.index') }}">FeedMe</a>
+        <nav class="site-nav" aria-label="Catalogue">
+          <a class="site-nav__link" href="{{ url_for('public.components') }}">Components</a>
+        </nav>
         <button
           type="button"
           class="btn btn--ghost"

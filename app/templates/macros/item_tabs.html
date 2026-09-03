@@ -1,0 +1,129 @@
+{#
+  The four-tab item view, shared by both catalogues (03-FRONTEND.md).
+
+  All four panels are present in the served HTML with their own headings
+  and anchors. Without JavaScript they stack and the strip is a set of
+  in-page links. `tabs.js` upgrades the same markup to an ARIA tablist and
+  toggles visibility only — it never fetches or injects content.
+#}
+
+{% import "macros/allergens.html" as allergen_macros %}
+
+{% macro item_tabs(item) %}
+  <div class="item-tabs" data-item-tabs>
+    <nav class="tab-strip" aria-label="Item information">
+      <a class="tab" href="#ingredients" data-tab>Ingredients</a>
+      <a class="tab" href="#allergens" data-tab>Allergens</a>
+      <a class="tab" href="#storage" data-tab>Storage &amp; shelf life</a>
+      <a class="tab" href="#preparation" data-tab>Preparation</a>
+    </nav>
+
+    <section class="tab-panel" id="ingredients" data-tab-panel>
+      <h2 class="tab-panel__heading">Ingredients</h2>
+      {% if item.ingredients %}
+        <ul class="ingredients">
+          {% for ingredient in item.ingredients %}
+            <li class="ingredients__item">
+              <span class="ingredients__name">{{ ingredient.name }}</span>
+              {%- if ingredient.quantity %}
+                <span class="ingredients__quantity">{{ ingredient.quantity }}</span>
+              {%- endif %}
+              {%- if ingredient.is_optional %}
+                <span class="ingredients__optional">optional</span>
+              {%- endif %}
+              {%- if ingredient.note %}
+                <span class="ingredients__note">{{ ingredient.note }}</span>
+              {%- endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="notice notice--pending">Ingredient list pending.</p>
+      {% endif %}
+    </section>
+
+    <section class="tab-panel" id="allergens" data-tab-panel>
+      <h2 class="tab-panel__heading">Allergens</h2>
+      {{ allergen_macros.allergen_declaration(item.allergens) }}
+    </section>
+
+    <section class="tab-panel" id="storage" data-tab-panel>
+      <h2 class="tab-panel__heading">Storage &amp; shelf life</h2>
+      {% if item.storage %}
+        <dl class="spec-list">
+          <dt>Storage</dt>
+          <dd>{{ item.storage.method_label }}</dd>
+          <dt>Temperature</dt>
+          <dd>{{ item.storage.temperature_c }}&#8202;&deg;C</dd>
+          <dt>Shelf life</dt>
+          <dd>
+            {{ item.storage.shelf_life_days }}
+            day{{ '' if item.storage.shelf_life_days == 1 else 's' }}
+            from preparation
+          </dd>
+          {% if item.storage.shelf_life_note %}
+            <dt>Once opened</dt>
+            <dd>{{ item.storage.shelf_life_note }}</dd>
+          {% endif %}
+          <dt>Freezable</dt>
+          <dd>
+            {% if item.storage.freezable %}
+              Yes{% if item.storage.freezer_life_days %},
+                up to {{ item.storage.freezer_life_days }}
+                day{{ '' if item.storage.freezer_life_days == 1 else 's' }}
+                frozen{% endif %}
+            {% else %}
+              No
+            {% endif %}
+          </dd>
+        </dl>
+        <p class="tab-panel__note">
+          Your use-by date is calculated from the day this item is prepared
+          for your order, and is shown on the order itself.
+        </p>
+      {% else %}
+        <p class="notice notice--pending">Storage information pending.</p>
+      {% endif %}
+    </section>
+
+    <section class="tab-panel" id="preparation" data-tab-panel>
+      <h2 class="tab-panel__heading">Preparation</h2>
+      {% if item.preparation %}
+        {% if item.preparation.steps %}
+          <ol class="steps">
+            {% for step in item.preparation.steps %}
+              <li class="steps__item">{{ step }}</li>
+            {% endfor %}
+          </ol>
+        {% endif %}
+        {% if item.preparation.reheat_method_label %}
+          <dl class="spec-list">
+            <dt>Reheat</dt>
+            <dd>
+              {{ item.preparation.reheat_method_label }}
+              {%- if item.preparation.reheat_minutes %},
+                {{ item.preparation.reheat_minutes }}
+                minute{{ '' if item.preparation.reheat_minutes == 1 else 's' }}
+              {%- endif %}
+            </dd>
+            {% if item.preparation.reheat_note %}
+              <dt>Reheating note</dt>
+              <dd>{{ item.preparation.reheat_note }}</dd>
+            {% endif %}
+          </dl>
+        {% endif %}
+        {% if item.preparation.serving_suggestion %}
+          <h3 class="tab-panel__subheading">Serving suggestion</h3>
+          <p>{{ item.preparation.serving_suggestion }}</p>
+        {% endif %}
+        {% if not item.preparation.steps
+              and not item.preparation.reheat_method_label
+              and not item.preparation.serving_suggestion %}
+          <p class="notice notice--pending">Preparation notes pending.</p>
+        {% endif %}
+      {% else %}
+        <p class="notice notice--pending">Preparation notes pending.</p>
+      {% endif %}
+    </section>
+  </div>
+{% endmacro %}

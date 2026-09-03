@@ -62,6 +62,60 @@ KNOWN_PREFERENCE_FLAGS: tuple[str, ...] = (
 )
 
 
+#: Display labels. Kept beside the vocabulary they describe so a template
+#: never has to reconstruct one from an enum value.
+UNIT_LABELS: dict[Unit, str] = {
+    Unit.EACH: "each",
+    Unit.PER_100G: "per 100g",
+    Unit.PORTION: "per portion",
+    Unit.PER_250ML: "per 250ml",
+}
+
+COMPONENT_CATEGORY_LABELS: dict[ComponentCategory, str] = {
+    ComponentCategory.DRESSING: "Dressings",
+    ComponentCategory.SAUCE: "Sauces",
+    ComponentCategory.PUREE: "Purées",
+    ComponentCategory.SIDE: "Sides",
+    ComponentCategory.PROTEIN: "Proteins",
+    ComponentCategory.BASE: "Bases",
+    ComponentCategory.OTHER: "Other",
+}
+
+STORAGE_METHOD_LABELS: dict[StorageMethod, str] = {
+    StorageMethod.REFRIGERATE: "Refrigerate",
+    StorageMethod.FREEZE: "Freeze",
+    StorageMethod.AMBIENT: "Ambient — store in the pantry",
+    StorageMethod.REHEAT_FROM_FROZEN: "Reheat from frozen",
+}
+
+REHEAT_METHOD_LABELS: dict[ReheatMethod, str] = {
+    ReheatMethod.OVEN: "Oven",
+    ReheatMethod.MICROWAVE: "Microwave",
+    ReheatMethod.PAN: "Pan",
+    ReheatMethod.NONE: "No reheating needed",
+}
+
+#: 01-DOMAIN.md fixes both the scale and the wording.
+SPICE_LEVEL_LABELS: dict[int, str] = {
+    0: "No heat",
+    1: "Mild",
+    2: "Medium",
+    3: "Hot",
+    4: "Very hot",
+    5: "Extreme",
+}
+
+
+def preference_flag_label(flag: str) -> str:
+    """Human wording for a preference flag.
+
+    Flags are chef-extensible, so this derives the label rather than
+    looking it up: an unknown flag still renders as words, never as a
+    raw identifier.
+    """
+    return flag.replace("_", " ").strip().capitalize()
+
+
 class Ingredient(EmbeddedModel):
     """One ingredient line. Displayed in authored order, never sorted."""
 
@@ -79,6 +133,10 @@ class StorageBlock(EmbeddedModel):
     freezable: bool = False
     freezer_life_days: int | None = Field(default=None, ge=0)
 
+    @property
+    def method_label(self) -> str:
+        return STORAGE_METHOD_LABELS[self.method]
+
 
 class PreparationBlock(EmbeddedModel):
     steps: list[str] = Field(default_factory=list)
@@ -86,6 +144,12 @@ class PreparationBlock(EmbeddedModel):
     reheat_minutes: int | None = Field(default=None, ge=0)
     reheat_note: str | None = None
     serving_suggestion: str | None = None
+
+    @property
+    def reheat_method_label(self) -> str | None:
+        if self.reheat_method is None:
+            return None
+        return REHEAT_METHOD_LABELS[self.reheat_method]
 
 
 class ItemBase(TimestampedModel):
@@ -116,6 +180,18 @@ class ItemBase(TimestampedModel):
     @property
     def is_visible_to_customers(self) -> bool:
         return self.is_available and not self.is_archived
+
+    @property
+    def unit_label(self) -> str:
+        return UNIT_LABELS[self.unit]
+
+    @property
+    def spice_label(self) -> str:
+        return SPICE_LEVEL_LABELS[self.spice_level]
+
+    @property
+    def preference_flag_labels(self) -> list[str]:
+        return [preference_flag_label(flag) for flag in self.preference_flags]
 
     @model_validator(mode="after")
     def _unreviewed_items_cannot_be_published(self) -> "ItemBase":

@@ -1,0 +1,55 @@
+{#
+  The allergen tab. A compliance surface, so the rules from 03-FRONTEND.md
+  are enforced here rather than left to the caller:
+
+  - `contains` first, as high-contrast chips.
+  - `may_contain` in a visually distinct, clearly labelled block below.
+  - Never a preference flag or a spice level in this panel.
+  - An unreviewed block reads "pending", never "no allergens".
+  - Never an abbreviation, never an icon without its text label.
+#}
+
+{% macro allergen_declaration(block) %}
+  {% if not block.is_reviewed %}
+    <p class="notice notice--pending" role="status">
+      Allergen information pending. This item has not yet been reviewed, so
+      no allergen declaration can be shown for it.
+    </p>
+  {% else %}
+    {% if block.declares_nothing %}
+      <p class="notice">No declared allergens.</p>
+    {% else %}
+      <h3 class="allergens__heading">Contains</h3>
+      <ul class="chip-list">
+        {% for label in block.contains_labels %}
+          <li class="chip chip--contains">{{ label }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if block.may_contain_labels %}
+      <h3 class="allergens__heading">May contain — cross-contact risk</h3>
+      <ul class="chip-list">
+        {% for label in block.may_contain_labels %}
+          <li class="chip chip--may">{{ label }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if block.sulphites_threshold_note %}
+      {# A qualifier on the sulphites chip above, never a declaration of
+         its own: `contains` is the only thing that declares an allergen. #}
+      <p class="allergens__note">{{ block.sulphites_threshold_note }}</p>
+    {% endif %}
+
+    {% if block.chef_note %}
+      <h3 class="allergens__heading">Note from the kitchen</h3>
+      <p class="allergens__note">{{ block.chef_note }}</p>
+    {% endif %}
+
+    <p class="allergens__reviewed">
+      Declaration last reviewed
+      {{ block.reviewed_at.day }} {{ block.reviewed_at.strftime('%B %Y') }}.
+    </p>
+  {% endif %}
+{% endmacro %}
