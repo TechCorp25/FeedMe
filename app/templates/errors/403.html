@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Not permitted — FeedMe{% endblock %}
+{% block content %}
+  <h1 class="page__title">Not permitted</h1>
+  <p class="page__lede">You are signed in, but this action is not available to you.</p>
+  <p><a class="btn" href="{{ url_for('public.index') }}">Back to the start</a></p>
+{% endblock %}
