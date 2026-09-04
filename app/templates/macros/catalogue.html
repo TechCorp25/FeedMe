@@ -40,17 +40,22 @@
 {#
   A plain GET form: it submits without JavaScript, and every filtered view
   is a URL that can be linked, bookmarked and shared.
+
+  One macro serves both catalogues. They filter on different vocabularies
+  — component category, dish meal type — but the strip is the same
+  control, so the browse object names its facet and this stays a layout.
 #}
-{% macro component_filters(browse) %}
-  <form class="filters" method="get" action="{{ url_for('public.components') }}">
+{% macro catalogue_filters(browse, action_url) %}
+  {% set facet = browse.select_facet %}
+  <form class="filters" method="get" action="{{ action_url }}">
     <h2 class="filters__heading">Filter</h2>
 
-    {% if browse.category_choices %}
+    {% if facet.choices %}
       <div class="filters__group">
-        <label class="filters__label" for="filter-category">Category</label>
-        <select class="filters__select" id="filter-category" name="category">
-          <option value="">All categories</option>
-          {% for choice in browse.category_choices %}
+        <label class="filters__label" for="filter-{{ facet.name }}">{{ facet.label }}</label>
+        <select class="filters__select" id="filter-{{ facet.name }}" name="{{ facet.name }}">
+          <option value="">{{ facet.all_label }}</option>
+          {% for choice in facet.choices %}
             <option
               value="{{ choice.value }}"
               {{ 'selected' if choice.selected else '' }}
@@ -87,7 +92,7 @@
     <div class="filters__actions">
       <button class="btn" type="submit">Apply filters</button>
       {% if browse.filters.is_active %}
-        <a class="btn btn--ghost" href="{{ url_for('public.components') }}">
+        <a class="btn btn--ghost" href="{{ action_url }}">
           Clear filters
         </a>
       {% endif %}

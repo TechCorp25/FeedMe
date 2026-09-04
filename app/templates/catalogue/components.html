@@ -10,7 +10,7 @@
     Every item carries a full allergen declaration on its own page.
   </p>
 
-  {{ catalogue_macros.component_filters(browse) }}
+  {{ catalogue_macros.catalogue_filters(browse, url_for('public.components')) }}
 
   {% if browse.is_empty %}
     <p class="notice" role="status">

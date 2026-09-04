@@ -102,10 +102,12 @@ read-only public catalogue:
 | `GET /health` | liveness plus a database round-trip |
 | `GET /components` | components browse, filtered by a plain GET form |
 | `GET /components/<slug>` | one component, all four tab panels in the HTML |
+| `GET /dishes` | dishes browse, filtered by meal type and preference |
+| `GET /dishes/<slug>` | one dish, all four tab panels plus provenance links |
 
-Next slice: **dishes browse and detail, with meal-type filtering.** The two
-go together — filtering by meal type is the same query shape as the dish
-listing itself, and splitting them would mean writing the query twice.
+Next slice: **the cart.** `/menu/<meal_type_slug>`, the third ordering entry
+point in `04-WORKFLOWS.md`, and the allergen exclusion filter offered on all
+three are both still to come.
 
 Not built: cart, checkout, the customer account area, and every chef-admin
 screen — the catalogue editors, the allergen editor, the order queue, the

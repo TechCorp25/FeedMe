@@ -45,6 +45,36 @@ def component_detail(slug: str) -> str:
     return render_template("catalogue/component_detail.html", item=item)
 
 
+@bp.get("/dishes")
+@public_route
+def dishes() -> str:
+    """Dish catalogue.
+
+    Filters arrive as a plain GET form, so the page works with JavaScript
+    disabled and every filtered view is a linkable URL. Meal type travels
+    as a slug for the same reason.
+    """
+    browse = catalogue.browse_dishes(
+        meal_type=request.args.get("meal_type"),
+        preference_flags=request.args.getlist("preference"),
+    )
+    return render_template("catalogue/dishes.html", browse=browse)
+
+
+@bp.get("/dishes/<slug>")
+@public_route
+def dish_detail(slug: str) -> str:
+    """One dish, with all four tab panels in the served HTML.
+
+    The dish's own tabs are authoritative; referenced components appear as
+    provenance links only and never alter what the tabs say (01-DOMAIN.md).
+    """
+    detail = catalogue.get_dish_detail(slug)
+    if detail is None:
+        abort(404)
+    return render_template("catalogue/dish_detail.html", detail=detail)
+
+
 @bp.get("/health")
 @public_route
 def health() -> tuple[dict, int]:
