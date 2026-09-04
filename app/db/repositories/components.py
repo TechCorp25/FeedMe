@@ -72,6 +72,31 @@ def visible_component_preference_flags() -> list[str]:
     return sorted(value for value in values if isinstance(value, str))
 
 
+def list_visible_components_by_ids(ids: Sequence[str]) -> list[Component]:
+    """Visible components for the given ids, in the order they were given.
+
+    Used for a dish's provenance links. Ids that are malformed, unknown or
+    not published are dropped rather than reported: a customer following a
+    dead provenance link is worse than not seeing the link at all. Order
+    is the caller's authored order, and repeats collapse, so the same dish
+    always renders the same list.
+    """
+    wanted: list[str] = []
+    for value in ids:
+        if isinstance(value, str) and value not in wanted:
+            wanted.append(value)
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in wanted)
+        if object_id is not None
+    ]
+    if not object_ids:
+        return []
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}, **_VISIBLE})
+    found = {str(document["_id"]): document for document in cursor}
+    return parse_many(Component, [found[value] for value in wanted if value in found])
+
+
 def get_visible_component_by_slug(slug: str) -> Component | None:
     return parse_one(
         Component, get_db()[COLLECTION].find_one({"slug": slug, **_VISIBLE})

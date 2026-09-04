@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% import "macros/item_tabs.html" as tab_macros %}
+
+{% set item = detail.dish %}
+
+{% block title %}{{ item.name }} — FeedMe{% endblock %}
+
+{% block head_scripts %}
+  <script type="module" src="{{ url_for('static', filename='js/tabs.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('public.dishes') }}">Dishes</a>
+  </nav>
+
+  <header class="item-header">
+    <h1 class="page__title">{{ item.name }}</h1>
+    {% if item.summary %}
+      <p class="page__lede">{{ item.summary }}</p>
+    {% endif %}
+    <p class="item-header__price">
+      <span class="item-header__amount">{{ item.price_cents | price }}</span>
+      <span class="item-header__unit">{{ item.unit_label }}</span>
+      <span class="item-header__unit">
+        serves {{ item.serves }}
+      </span>
+    </p>
+    {% if item.preference_flag_labels or item.spice_level %}
+      {# Preferences and heat sit on the header, never in the allergen tab. #}
+      <ul class="chip-list chip-list--compact">
+        {% for label in item.preference_flag_labels %}
+          <li class="chip">{{ label }}</li>
+        {% endfor %}
+        {% if item.spice_level %}
+          <li class="chip">Heat: {{ item.spice_label }}</li>
+        {% endif %}
+      </ul>
+    {% endif %}
+    {% if item.description %}
+      <p class="item-header__description">{{ item.description }}</p>
+    {% endif %}
+  </header>
+
+  {% if detail.provenance %}
+    {#
+      Provenance only. A referenced component never substitutes for, merges
+      into or overrides this dish's own four tabs (01-DOMAIN.md), so it sits
+      outside them and says so.
+    #}
+    <section class="mt-6 flex flex-col gap-3" aria-labelledby="made-with">
+      <h2 class="text-base font-semibold text-ink" id="made-with">Made with</h2>
+      <ul class="chip-list">
+        {% for component in detail.provenance %}
+          <li>
+            <a
+              class="chip min-h-touch underline underline-offset-4
+                     focus-visible:outline focus-visible:outline-2
+                     focus-visible:outline-offset-2 focus-visible:outline-accent"
+              href="{{ url_for('public.component_detail', slug=component.slug) }}"
+            >{{ component.name }}</a>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="max-w-prose text-sm text-muted">
+        These are our own components, listed so you can see what goes into
+        this dish. They are not ordered or priced separately. The allergen
+        declaration for this dish is its own and is complete below.
+      </p>
+    </section>
+  {% endif %}
+
+  {{ tab_macros.item_tabs(item) }}
+{% endblock %}

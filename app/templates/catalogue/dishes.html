@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% import "macros/catalogue.html" as catalogue_macros %}
+
+{% block title %}Dishes — FeedMe{% endblock %}
+
+{% block content %}
+  <h1 class="page__title">Dishes</h1>
+  <p class="page__lede">
+    Complete meals, prepared whole and priced whole. Every dish carries its
+    own full allergen declaration on its own page.
+  </p>
+
+  {{ catalogue_macros.catalogue_filters(browse, url_for('public.dishes')) }}
+
+  {% if browse.is_empty %}
+    <p class="notice" role="status">
+      {% if browse.filters.is_active %}
+        No dishes match those filters.
+        <a href="{{ url_for('public.dishes') }}">Clear them</a>
+        to see the whole catalogue.
+      {% else %}
+        There are no dishes available at the moment.
+      {% endif %}
+    </p>
+  {% else %}
+    <p class="catalogue__count" role="status">
+      {{ browse.items | length }}
+      dish{{ '' if browse.items | length == 1 else 'es' }}
+    </p>
+    <ul class="catalogue-grid">
+      {% for item in browse.items %}
+        {{ catalogue_macros.item_card(
+             item, url_for('public.dish_detail', slug=item.slug)) }}
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}
