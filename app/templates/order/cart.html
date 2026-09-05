@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% import "macros/cart.html" as cart_macros %}
+
+{% set return_to = url_for('order.cart') %}
+
+{% block title %}Your cart — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block content %}
+  <h1 class="page__title">Your cart</h1>
+
+  {% if view.is_empty %}
+    <p class="page__lede">Your cart is empty.</p>
+    <p class="mt-8 flex flex-wrap gap-3">
+      <a class="btn" href="{{ url_for('public.dishes') }}">Browse dishes</a>
+      <a class="btn btn--ghost" href="{{ url_for('public.components') }}">
+        Browse components
+      </a>
+    </p>
+  {% else %}
+    <p class="page__lede">
+      Prices are read from the catalogue each time this page is shown. They
+      are fixed onto your order when you place it, along with the allergen
+      declaration for every item as it stands at that moment.
+    </p>
+
+    {% if view.is_blocked %}
+      {#
+        Never pruned automatically. The customer chose these lines, and
+        finding out at collection is worse than being told now
+        (04-WORKFLOWS.md).
+      #}
+      <p class="notice notice--blocked" role="alert">
+        {{ view.unavailable | length }}
+        item{{ '' if view.unavailable | length == 1 else 's' }}
+        in your cart {{ 'is' if view.unavailable | length == 1 else 'are' }}
+        no longer available. Remove
+        {{ 'it' if view.unavailable | length == 1 else 'them' }} to continue.
+      </p>
+    {% endif %}
+
+    <ul class="cart-lines">
+      {% for entry in view.entries %}
+        <li class="cart-line {{ 'cart-line--unavailable' if not entry.is_available }}">
+          <div class="cart-line__item">
+            <h2 class="cart-line__name">
+              {% if entry.is_available %}
+                {{ entry.name }}
+              {% else %}
+                <s>{{ entry.name }}</s>
+              {% endif %}
+            </h2>
+            {% if entry.is_available %}
+              <p class="cart-line__price">
+                <span class="cart-line__amount">
+                  {{ entry.unit_price_cents | price }}
+                </span>
+                <span class="cart-line__unit">{{ entry.item.unit_label }}</span>
+              </p>
+            {% else %}
+              <p class="cart-line__gone">
+                No longer available. It has not been priced, and it is not
+                counted in the subtotal below.
+              </p>
+            {% endif %}
+          </div>
+
+          <div class="cart-line__controls">
+            {{ cart_macros.line_controls(entry, return_to) }}
+          </div>
+
+          <p class="cart-line__total">
+            {% if entry.is_available %}
+              <span class="visually-hidden">Line total</span>
+              {{ entry.line_total_cents | price }}
+            {% else %}
+              <span aria-hidden="true">—</span>
+            {% endif %}
+          </p>
+        </li>
+      {% endfor %}
+    </ul>
+
+    <dl class="cart-summary">
+      <dt>Subtotal</dt>
+      <dd class="cart-summary__amount">{{ view.subtotal_cents | price }}</dd>
+    </dl>
+    <p class="page__note">
+      No payment is taken in this application. An order is a request to the
+      kitchen and is settled with the chef directly.
+    </p>
+
+    <p class="mt-8 flex flex-wrap items-center gap-3">
+      {#
+        Checkout is the next slice. The control is named and disabled
+        rather than absent, so what happens next is visible — and it stays
+        disabled while a withdrawn line is in the cart, which is the rule
+        it will keep once it does something.
+      #}
+      <button class="btn" type="button" disabled aria-disabled="true">
+        Checkout
+      </button>
+      <span class="cart-summary__pending">
+        {% if view.is_blocked %}
+          Remove the unavailable item{{ '' if view.unavailable | length == 1 else 's' }} above first.
+        {% else %}
+          Checkout is not built yet.
+        {% endif %}
+      </span>
+    </p>
+  {% endif %}
+{% endblock %}

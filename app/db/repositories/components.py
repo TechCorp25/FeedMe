@@ -133,3 +133,35 @@ def chef_get_component(component_id: str) -> Component | None:
 def chef_create_component(component: Component) -> Component:
     result = get_db()[COLLECTION].insert_one(component.to_mongo())
     return component.model_copy(update={"id": str(result.inserted_id)})
+
+# --- cart scope: sees a withdrawn item, by id, so a line can still render ---
+
+
+def list_components_for_cart(ids: Sequence[str]) -> list[Component]:
+    """Components for cart lines, whatever their visibility, in id order.
+
+    A cart never silently drops a line (04-WORKFLOWS.md). A line whose
+    item has since been withdrawn still has to render — by name, struck
+    through, blocking checkout until the customer removes it — and that
+    needs a document the customer-facing read would refuse to return.
+
+    So this is a separately named function rather than a flag on the
+    visible read: the widened scope is visible at the call site, as
+    02-ARCHITECTURE.md requires of any scope that is not the default one.
+    Only the name of a withdrawn item reaches the customer; the cart
+    prices and orders nothing that is not visible.
+    """
+    wanted: list[str] = []
+    for value in ids:
+        if isinstance(value, str) and value not in wanted:
+            wanted.append(value)
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in wanted)
+        if object_id is not None
+    ]
+    if not object_ids:
+        return []
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}})
+    found = {str(document["_id"]): document for document in cursor}
+    return parse_many(Component, [found[value] for value in wanted if value in found])

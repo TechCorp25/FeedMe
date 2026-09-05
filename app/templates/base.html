@@ -20,6 +20,7 @@
       })();
     </script>
     <script type="module" src="{{ url_for('static', filename='js/theme.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/cart.js') }}"></script>
     {% block head_scripts %}{% endblock %}
   </head>
   <body class="min-h-full antialiased">
@@ -32,6 +33,18 @@
           <a class="site-nav__link" href="{{ url_for('public.components') }}">Components</a>
           <a class="site-nav__link" href="{{ url_for('public.dishes') }}">Dishes</a>
         </nav>
+        {#
+          The count is rendered by the server on every page, so the badge is
+          right before any script runs. `cart.js` updates the same element
+          after a mutation; it never supplies the first value.
+        #}
+        <a class="site-nav__link site-nav__cart" href="{{ url_for('order.cart') }}">
+          Cart
+          <span class="cart-badge" data-cart-count aria-hidden="true">{{ cart_item_count }}</span>
+          <span class="visually-hidden" data-cart-count-label>
+            {{ cart_item_count }} item{{ '' if cart_item_count == 1 else 's' }}
+          </span>
+        </a>
         <button
           type="button"
           class="btn btn--ghost shrink-0"
@@ -43,6 +56,19 @@
     </header>
 
     <main id="main" class="page {% block page_modifier %}{% endblock %}">
+      {#
+        Announced rather than merely shown: a cart change is confirmed by a
+        message the customer may not be looking at (03-FRONTEND.md).
+      #}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <ul class="flashes" role="status" aria-live="polite">
+            {% for category, message in messages %}
+              <li class="flash flash--{{ category }}">{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
       {% block content %}{% endblock %}
     </main>
 

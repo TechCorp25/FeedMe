@@ -47,6 +47,7 @@ def create_app(
     _trust_forwarded_headers(app)
     _init_extensions(app, mongo_client)
     _register_template_filters(app)
+    _register_template_context(app)
     _register_blueprints(app)
     _register_error_handlers(app)
 
@@ -100,6 +101,24 @@ def _register_template_filters(app: Flask) -> None:
     # Templates render money through the same formatter as everything
     # else, so integer minor units are never re-implemented in Jinja.
     app.jinja_env.filters["price"] = format_price_aud
+
+
+def _register_template_context(app: Flask) -> None:
+    """Values every template may read, whatever rendered it."""
+
+    @app.context_processor
+    def cart_context():  # noqa: ANN202 — Jinja context callback
+        """The cart badge's count.
+
+        Read from the session alone, never the database: this runs for
+        every page, error pages included, and a count is not worth a
+        query on a page that has nothing to do with the cart. It is
+        rendered server-side so the badge is correct before any script
+        runs.
+        """
+        from app.services.cart import cart_item_count
+
+        return {"cart_item_count": cart_item_count()}
 
 
 def _register_blueprints(app: Flask) -> None:

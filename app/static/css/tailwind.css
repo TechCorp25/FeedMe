@@ -554,6 +554,146 @@
     @apply flex flex-wrap items-start gap-3 lg:ml-auto;
   }
 
+  /* --- cart ---------------------------------------------------------- */
+
+  .site-nav__cart {
+    @apply gap-2;
+  }
+
+  /* The count is a stamped square, never a coloured dot: it carries a
+     number, so it has to be read, not noticed. */
+  .cart-badge {
+    @apply inline-flex min-w-[1.75rem] items-center justify-center border-2
+           border-ink px-1 font-display text-xs uppercase tracking-widest
+           text-ink;
+  }
+
+  /* A flashed confirmation. Announced by the region it sits in; boxed so
+     it is not mistaken for the page's own prose. */
+  .flashes {
+    @apply mb-6 flex list-none flex-col gap-2 p-0;
+  }
+
+  .flash {
+    @apply max-w-prose border-2 border-ink bg-surface p-3 font-serif text-sm
+           text-ink;
+  }
+
+  .flash--error {
+    @apply border-stamp text-stamp;
+  }
+
+  .cart-add-block {
+    @apply mt-8 flex flex-col gap-3 border-2 border-ink bg-surface p-4;
+    scroll-margin-top: 4rem;
+  }
+
+  .cart-add-block__heading {
+    @apply text-sm text-ink;
+  }
+
+  .cart-add-block__note {
+    @apply max-w-prose font-serif text-sm text-ink-muted;
+  }
+
+  .cart-add {
+    @apply flex flex-wrap items-end gap-3;
+  }
+
+  .cart-add__label {
+    @apply font-display text-xs uppercase tracking-widest text-ink-muted;
+  }
+
+  .cart-add__quantity,
+  .cart-line__quantity {
+    @apply min-h-touch w-20 border-2 border-ink bg-ground px-3 font-serif
+           text-base text-ink
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+
+  .cart-message {
+    @apply w-full font-serif text-sm text-ink-muted;
+  }
+
+  .cart-message--error {
+    @apply text-stamp;
+  }
+
+  .cart-lines {
+    @apply mt-6 flex list-none flex-col gap-0 border-t-2 border-ink p-0;
+  }
+
+  .cart-line {
+    @apply flex flex-col gap-3 border-b-2 border-ink py-4
+           sm:flex-row sm:items-start sm:justify-between sm:gap-6;
+  }
+
+  /* Struck through and muted, but still fully readable: this line is what
+     the customer has to act on. */
+  .cart-line--unavailable {
+    @apply text-ink-muted;
+  }
+
+  .cart-line__item {
+    @apply flex flex-1 flex-col gap-1;
+  }
+
+  .cart-line__name {
+    @apply font-display text-lg uppercase leading-tight tracking-wide;
+  }
+
+  .cart-line__price {
+    @apply flex items-baseline gap-2;
+  }
+
+  .cart-line__amount {
+    @apply font-display text-base uppercase tracking-wide text-ink;
+  }
+
+  .cart-line__unit {
+    @apply font-display text-xs uppercase tracking-widest text-ink-muted;
+  }
+
+  .cart-line__gone {
+    @apply max-w-prose font-serif text-sm text-stamp;
+  }
+
+  .cart-line__controls {
+    @apply flex flex-wrap items-end gap-3;
+  }
+
+  .cart-line__form {
+    @apply flex items-end gap-2;
+  }
+
+  .cart-line__total {
+    @apply font-display text-lg uppercase tracking-wide text-ink
+           sm:min-w-[6rem] sm:text-right;
+  }
+
+  .cart-summary {
+    @apply mt-6 flex items-baseline justify-between gap-4 border-b-2
+           border-ink pb-4;
+  }
+
+  .cart-summary dt {
+    @apply font-display text-sm uppercase tracking-widest text-ink;
+  }
+
+  .cart-summary__amount {
+    @apply m-0 font-display text-xl uppercase tracking-wide text-ink;
+  }
+
+  .cart-summary__pending {
+    @apply font-serif text-sm text-ink-muted;
+  }
+
+  /* A blocked cart is stated, not styled into a warning colour alone. */
+  .notice--blocked {
+    @apply border-stamp text-stamp;
+  }
+
   .site-footer {
     @apply mx-auto max-w-screen border-t border-line px-4 pb-8 pt-6 font-serif
            text-sm text-ink-muted;

@@ -1,0 +1,91 @@
+{#
+  Cart controls. Every one of them is a real form that posts and
+  redirects, so the cart works with JavaScript disabled (03-FRONTEND.md).
+  `cart.js` intercepts the same forms and posts to `/api/cart` instead —
+  it is an enhancement over these, never a replacement.
+#}
+
+{#
+  Add to cart, from an item's own page.
+
+  Deliberately not on a catalogue card: a card carries no allergen
+  declaration and points at the page that does. Adding an item from the
+  page that shows what is in it is the order this service is built to
+  encourage, and it costs a customer one click they were going to make
+  anyway to read the declaration.
+#}
+{% macro add_to_cart(item, item_type, return_to) %}
+  <form
+    class="cart-add"
+    method="post"
+    action="{{ url_for('order.add_to_cart') }}"
+    data-cart-form
+    data-cart-action="add"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="item_type" value="{{ item_type }}">
+    <input type="hidden" name="item_id" value="{{ item.id }}">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <label class="cart-add__label" for="add-quantity">Quantity</label>
+    <input
+      class="cart-add__quantity"
+      id="add-quantity"
+      name="quantity"
+      type="number"
+      value="1"
+      min="1"
+      max="99"
+      step="1"
+      inputmode="numeric"
+    >
+    <button class="btn" type="submit">Add to cart</button>
+  </form>
+{% endmacro %}
+
+
+{# One cart line's quantity, and the control that removes it. #}
+{% macro line_controls(entry, return_to) %}
+  <form
+    class="cart-line__form"
+    method="post"
+    action="{{ url_for('order.update_cart') }}"
+    data-cart-form
+    data-cart-action="set"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="item_type" value="{{ entry.item_type.value }}">
+    <input type="hidden" name="item_id" value="{{ entry.item_id }}">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <label
+      class="visually-hidden"
+      for="quantity-{{ entry.item_type.value }}-{{ entry.item_id }}"
+    >Quantity of {{ entry.name }}</label>
+    <input
+      class="cart-line__quantity"
+      id="quantity-{{ entry.item_type.value }}-{{ entry.item_id }}"
+      name="quantity"
+      type="number"
+      value="{{ entry.quantity }}"
+      min="0"
+      max="99"
+      step="1"
+      inputmode="numeric"
+    >
+    <button class="btn btn--ghost" type="submit">Update</button>
+  </form>
+  <form
+    class="cart-line__form"
+    method="post"
+    action="{{ url_for('order.remove_from_cart') }}"
+    data-cart-form
+    data-cart-action="remove"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="item_type" value="{{ entry.item_type.value }}">
+    <input type="hidden" name="item_id" value="{{ entry.item_id }}">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <button class="btn btn--ghost" type="submit">
+      Remove<span class="visually-hidden"> {{ entry.name }}</span>
+    </button>
+  </form>
+{% endmacro %}

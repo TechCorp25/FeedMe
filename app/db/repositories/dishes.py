@@ -86,6 +86,29 @@ def visible_dish_preference_flags() -> list[str]:
     return sorted(value for value in values if isinstance(value, str))
 
 
+def list_visible_dishes_by_ids(ids: Sequence[str]) -> list[Dish]:
+    """Published dishes for the given ids, in the order they were given.
+
+    The customer-facing read by id. Ids that are malformed, unknown or
+    not published are dropped, so the publication rule stays in the query
+    rather than being re-checked by a caller.
+    """
+    wanted: list[str] = []
+    for value in ids:
+        if isinstance(value, str) and value not in wanted:
+            wanted.append(value)
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in wanted)
+        if object_id is not None
+    ]
+    if not object_ids:
+        return []
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}, **_VISIBLE})
+    found = {str(document["_id"]): document for document in cursor}
+    return parse_many(Dish, [found[value] for value in wanted if value in found])
+
+
 def get_visible_dish_by_slug(slug: str) -> Dish | None:
     return parse_one(
         Dish, get_db()[COLLECTION].find_one({"slug": slug, **_VISIBLE})
@@ -111,3 +134,35 @@ def chef_get_dish(dish_id: str) -> Dish | None:
 def chef_create_dish(dish: Dish) -> Dish:
     result = get_db()[COLLECTION].insert_one(dish.to_mongo())
     return dish.model_copy(update={"id": str(result.inserted_id)})
+
+# --- cart scope: sees a withdrawn item, by id, so a line can still render ---
+
+
+def list_dishes_for_cart(ids: Sequence[str]) -> list[Dish]:
+    """Dishes for cart lines, whatever their visibility, in id order.
+
+    A cart never silently drops a line (04-WORKFLOWS.md). A line whose
+    item has since been withdrawn still has to render — by name, struck
+    through, blocking checkout until the customer removes it — and that
+    needs a document the customer-facing read would refuse to return.
+
+    So this is a separately named function rather than a flag on the
+    visible read: the widened scope is visible at the call site, as
+    02-ARCHITECTURE.md requires of any scope that is not the default one.
+    Only the name of a withdrawn item reaches the customer; the cart
+    prices and orders nothing that is not visible.
+    """
+    wanted: list[str] = []
+    for value in ids:
+        if isinstance(value, str) and value not in wanted:
+            wanted.append(value)
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in wanted)
+        if object_id is not None
+    ]
+    if not object_ids:
+        return []
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}})
+    found = {str(document["_id"]): document for document in cursor}
+    return parse_many(Dish, [found[value] for value in wanted if value in found])
