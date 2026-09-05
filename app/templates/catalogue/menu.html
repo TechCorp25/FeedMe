@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "macros/catalogue.html" as catalogue_macros %}
+
+{% set menu_url = url_for('public.menu', meal_type_slug=browse.meal_type.slug) %}
+
+{% block title %}{{ browse.meal_type.name }} — FeedMe{% endblock %}
+
+{% block content %}
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('public.dishes') }}">Dishes</a>
+  </nav>
+
+  {# The meal type is the page, not a filter: it is named as the kicker
+     and the title, and there is no control that clears it. #}
+  <p class="page__kicker">Menu</p>
+  <h1 class="page__title">{{ browse.meal_type.name }}</h1>
+  <p class="page__lede">
+    Our {{ browse.meal_type.name | lower }} dishes. These are the same
+    dishes as the full catalogue, grouped by when they are eaten — a dish
+    may appear under more than one menu.
+  </p>
+
+  {{ catalogue_macros.catalogue_filters(browse, menu_url) }}
+
+  {% if browse.is_empty %}
+    <p class="notice" role="status">
+      {% if browse.filters.is_active %}
+        No {{ browse.meal_type.name | lower }} dishes match those filters.
+        <a href="{{ menu_url }}">Clear them</a>
+        to see the whole menu.
+      {% else %}
+        There are no {{ browse.meal_type.name | lower }} dishes at the moment.
+        <a href="{{ url_for('public.dishes') }}">Browse every dish</a>
+        instead.
+      {% endif %}
+    </p>
+  {% else %}
+    <p class="catalogue__count" role="status">
+      {{ browse.items | length }}
+      dish{{ '' if browse.items | length == 1 else 'es' }}
+    </p>
+    <ul class="catalogue-grid">
+      {% for item in browse.items %}
+        {{ catalogue_macros.item_card(
+             item,
+             url_for('public.dish_detail', slug=item.slug),
+             browse.cautions_for(item)) }}
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

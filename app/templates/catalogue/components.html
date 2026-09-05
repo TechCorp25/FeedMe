@@ -30,7 +30,9 @@
     <ul class="catalogue-grid">
       {% for item in browse.items %}
         {{ catalogue_macros.item_card(
-             item, url_for('public.component_detail', slug=item.slug)) }}
+             item,
+             url_for('public.component_detail', slug=item.slug),
+             browse.cautions_for(item)) }}
       {% endfor %}
     </ul>
   {% endif %}

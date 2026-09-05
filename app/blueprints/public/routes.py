@@ -31,6 +31,7 @@ def components() -> str:
     browse = catalogue.browse_components(
         category=request.args.get("category"),
         preference_flags=request.args.getlist("preference"),
+        exclude_allergens=request.args.getlist("exclude"),
     )
     return render_template("catalogue/components.html", browse=browse)
 
@@ -57,8 +58,13 @@ def dishes() -> str:
     browse = catalogue.browse_dishes(
         meal_type=request.args.get("meal_type"),
         preference_flags=request.args.getlist("preference"),
+        exclude_allergens=request.args.getlist("exclude"),
     )
-    return render_template("catalogue/dishes.html", browse=browse)
+    return render_template(
+        "catalogue/dishes.html",
+        browse=browse,
+        menu_meal_types=catalogue.list_menu_meal_types(),
+    )
 
 
 @bp.get("/dishes/<slug>")
@@ -73,6 +79,28 @@ def dish_detail(slug: str) -> str:
     if detail is None:
         abort(404)
     return render_template("catalogue/dish_detail.html", detail=detail)
+
+
+@bp.get("/menu/<meal_type_slug>")
+@public_route
+def menu(meal_type_slug: str) -> str:
+    """One meal type's dishes — the third ordering entry point.
+
+    The same dishes, cards and detail pages as `/dishes`; the meal type
+    is how the customer arrived, not a different catalogue
+    (04-WORKFLOWS.md). A slug that names no meal type is a 404: a path
+    that names nothing is not the same as a filter value that does not
+    apply, and serving the whole catalogue under a heading the customer
+    did not ask for would be worse than saying so.
+    """
+    browse = catalogue.browse_menu(
+        meal_type_slug,
+        preference_flags=request.args.getlist("preference"),
+        exclude_allergens=request.args.getlist("exclude"),
+    )
+    if browse is None:
+        abort(404)
+    return render_template("catalogue/menu.html", browse=browse)
 
 
 @bp.get("/health")

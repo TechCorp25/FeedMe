@@ -258,6 +258,14 @@
     @apply min-h-[3em] font-serif text-xs text-ink-muted;
   }
 
+  /* A cross-contact caution on an item the customer asked to exclude. It
+     is marked by a stamped rule and by its own wording, never by colour
+     alone, and it is not the item's declaration — that stays on the item
+     page, in the allergen tab. */
+  .card__caution {
+    @apply border-l-2 border-stamp py-1 pl-3 font-serif text-xs text-stamp;
+  }
+
   .breadcrumb {
     @apply mb-4 text-sm;
   }
@@ -447,6 +455,32 @@
            focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
 
+  /* --- entry points ------------------------------------------------- */
+
+  /* The menus, offered from the dish catalogue. A row of stamped links on
+     a wide screen; it wraps rather than scrolling, because there are only
+     ever a handful of meal types. */
+  .entry-points {
+    @apply mt-6 flex flex-wrap items-center gap-x-4 gap-y-2;
+  }
+
+  .entry-points__label {
+    @apply font-display text-xs uppercase tracking-widest text-ink-muted;
+  }
+
+  .entry-points__list {
+    @apply flex list-none flex-wrap gap-2 p-0;
+  }
+
+  .entry-points__link {
+    @apply inline-flex min-h-touch items-center border-2 border-ink
+           bg-transparent px-3 py-1 font-display text-xs uppercase
+           tracking-widest text-ink no-underline hover:bg-ink
+           hover:text-ground
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+
   /* --- filters ------------------------------------------------------ */
 
   /* A plain GET form, laid out as one band on a wide screen and stacked on a
@@ -500,6 +534,20 @@
 
   .filters__hint {
     @apply max-w-prose font-serif text-sm text-ink-muted;
+  }
+
+  /* Twelve checkboxes: given the full width of the strip so they lay out
+     as a block of columns rather than one long wrapped line. */
+  .filters__group--allergens {
+    @apply lg:w-full;
+  }
+
+  /* The exclusion filter states its own limits, and states them where the
+     control is rather than in a footnote. Boxed and stamped so it reads as
+     part of the compliance language, not as a hint. */
+  .filters__warning {
+    @apply max-w-prose border-2 border-stamp bg-ground p-3 font-serif text-sm
+           text-ink;
   }
 
   .filters__actions {

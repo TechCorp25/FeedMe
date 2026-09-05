@@ -13,6 +13,7 @@ from pymongo import ASCENDING
 
 from app.db.client import get_db
 from app.db.repositories._common import parse_many, parse_one, to_object_id
+from app.models.allergens import AllergenCode
 from app.models.catalogue import Component, ComponentCategory
 
 COLLECTION = "components"
@@ -26,9 +27,18 @@ _VISIBLE = {"is_available": True, "is_archived": False}
 def _visible_query(
     category: ComponentCategory | None,
     preference_flags: Sequence[str],
+    exclude_allergens: Sequence[AllergenCode] = (),
 ) -> dict:
     """Build the browse query. Filters narrow visibility, never widen it."""
     query: dict = dict(_VISIBLE)
+    if exclude_allergens:
+        # Only `contains` is matched. An item whose `may_contain` names an
+        # excluded allergen stays in the result and is marked in the
+        # listing instead: hiding a cross-contact risk would let the
+        # filter read as a safety guarantee (04-WORKFLOWS.md).
+        query["allergens.contains"] = {
+            "$nin": [code.value for code in exclude_allergens]
+        }
     if category is not None:
         query["category"] = category.value
     if preference_flags:
@@ -42,10 +52,11 @@ def list_visible_components(
     *,
     category: ComponentCategory | None = None,
     preference_flags: Sequence[str] = (),
+    exclude_allergens: Sequence[AllergenCode] = (),
 ) -> list[Component]:
     cursor = (
         get_db()[COLLECTION]
-        .find(_visible_query(category, preference_flags))
+        .find(_visible_query(category, preference_flags, exclude_allergens))
         .sort([("sort_order", ASCENDING), ("name", ASCENDING)])
     )
     return parse_many(Component, cursor)

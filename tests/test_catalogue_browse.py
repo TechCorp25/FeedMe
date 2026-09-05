@@ -77,6 +77,16 @@ def seeded(db):
     return db
 
 
+def cards_only(html: str) -> str:
+    """The catalogue grid alone, without the filter strip around it.
+
+    The allergen-exclusion control names every allergen in the controlled
+    vocabulary, so the page as a whole contains those words by design. The
+    rule these tests guard is about the cards.
+    """
+    return html.split('<ul class="catalogue-grid">')[1].split("</ul>")[0]
+
+
 def test_browse_lists_only_published_components(client, seeded):
     html = client.get("/components").get_data(as_text=True)
 
@@ -174,7 +184,7 @@ def test_browse_never_summarises_allergens_onto_a_card(client, seeded):
     """
     html = client.get("/components").get_data(as_text=True)
     assert "chip--contains" not in html
-    assert "Sesame" not in html
+    assert "Sesame" not in cards_only(html)
     assert "Full allergen declaration on the item page." in html
     assert "No declared allergens — full declaration on the item page." in html
 

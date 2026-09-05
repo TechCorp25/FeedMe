@@ -161,10 +161,16 @@ read-only public catalogue:
 | `GET /components/<slug>` | one component, all four tab panels in the HTML |
 | `GET /dishes` | dishes browse, filtered by meal type and preference |
 | `GET /dishes/<slug>` | one dish, all four tab panels plus provenance links |
+| `GET /menu/<meal_type_slug>` | one meal type's dishes — the third ordering entry point |
 
-Next slice: **the cart.** `/menu/<meal_type_slug>`, the third ordering entry
-point in `04-WORKFLOWS.md`, and the allergen exclusion filter offered on all
-three are both still to come.
+All three browse surfaces offer the **allergen exclusion filter**. It hides an
+item that *declares* an allergen, and marks rather than hides an item that
+carries it as a cross-contact risk — hiding that would let the filter read as
+the safety guarantee it says, at the control itself, that it is not. The strip
+offers the whole FSANZ vocabulary every time: a list built from the catalogue
+would be shorter, and its shortness would itself be a claim.
+
+Next slice: **the cart.**
 
 Not built: cart, checkout, the customer account area, and every chef-admin
 screen — the catalogue editors, the allergen editor, the order queue, the
