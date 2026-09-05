@@ -13,6 +13,7 @@ from pymongo import ASCENDING
 
 from app.db.client import get_db
 from app.db.repositories._common import parse_many, parse_one, to_object_id
+from app.models.allergens import AllergenCode
 from app.models.catalogue import Component, ComponentCategory
 
 COLLECTION = "components"
@@ -26,9 +27,18 @@ _VISIBLE = {"is_available": True, "is_archived": False}
 def _visible_query(
     category: ComponentCategory | None,
     preference_flags: Sequence[str],
+    exclude_allergens: Sequence[AllergenCode] = (),
 ) -> dict:
     """Build the browse query. Filters narrow visibility, never widen it."""
     query: dict = dict(_VISIBLE)
+    if exclude_allergens:
+        # Only `contains` is matched. An item whose `may_contain` names an
+        # excluded allergen stays in the result and is marked in the
+        # listing instead: hiding a cross-contact risk would let the
+        # filter read as a safety guarantee (04-WORKFLOWS.md).
+        query["allergens.contains"] = {
+            "$nin": [code.value for code in exclude_allergens]
+        }
     if category is not None:
         query["category"] = category.value
     if preference_flags:
@@ -42,10 +52,11 @@ def list_visible_components(
     *,
     category: ComponentCategory | None = None,
     preference_flags: Sequence[str] = (),
+    exclude_allergens: Sequence[AllergenCode] = (),
 ) -> list[Component]:
     cursor = (
         get_db()[COLLECTION]
-        .find(_visible_query(category, preference_flags))
+        .find(_visible_query(category, preference_flags, exclude_allergens))
         .sort([("sort_order", ASCENDING), ("name", ASCENDING)])
     )
     return parse_many(Component, cursor)
@@ -122,3 +133,35 @@ def chef_get_component(component_id: str) -> Component | None:
 def chef_create_component(component: Component) -> Component:
     result = get_db()[COLLECTION].insert_one(component.to_mongo())
     return component.model_copy(update={"id": str(result.inserted_id)})
+
+# --- cart scope: sees a withdrawn item, by id, so a line can still render ---
+
+
+def list_components_for_cart(ids: Sequence[str]) -> list[Component]:
+    """Components for cart lines, whatever their visibility, in id order.
+
+    A cart never silently drops a line (04-WORKFLOWS.md). A line whose
+    item has since been withdrawn still has to render — by name, struck
+    through, blocking checkout until the customer removes it — and that
+    needs a document the customer-facing read would refuse to return.
+
+    So this is a separately named function rather than a flag on the
+    visible read: the widened scope is visible at the call site, as
+    02-ARCHITECTURE.md requires of any scope that is not the default one.
+    Only the name of a withdrawn item reaches the customer; the cart
+    prices and orders nothing that is not visible.
+    """
+    wanted: list[str] = []
+    for value in ids:
+        if isinstance(value, str) and value not in wanted:
+            wanted.append(value)
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in wanted)
+        if object_id is not None
+    ]
+    if not object_ids:
+        return []
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}})
+    found = {str(document["_id"]): document for document in cursor}
+    return parse_many(Component, [found[value] for value in wanted if value in found])

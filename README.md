@@ -150,8 +150,8 @@ merge, and the checks report rather than enforce.
 ## What is built so far
 
 The application skeleton, the Pydantic schema of record, the repository
-layer with its tenancy contract, the order state machine, and the
-read-only public catalogue:
+layer with its tenancy contract, the order state machine, the public
+catalogue and its three ordering entry points, and the cart they feed:
 
 | Route | |
 |---|---|
@@ -161,11 +161,39 @@ read-only public catalogue:
 | `GET /components/<slug>` | one component, all four tab panels in the HTML |
 | `GET /dishes` | dishes browse, filtered by meal type and preference |
 | `GET /dishes/<slug>` | one dish, all four tab panels plus provenance links |
+| `GET /menu/<meal_type_slug>` | one meal type's dishes — the third ordering entry point |
+| `GET /cart` | the cart, resolved against the catalogue as it stands now |
+| `POST /cart/add`, `/cart/update`, `/cart/remove` | cart mutation as plain form posts |
+| `POST /api/cart` | the same three intents as JSON, for `cart.js` |
 
-Next slice: **the cart.** `/menu/<meal_type_slug>`, the third ordering entry
-point in `04-WORKFLOWS.md`, and the allergen exclusion filter offered on all
-three are both still to come.
+All three browse surfaces offer the **allergen exclusion filter**. It hides an
+item that *declares* an allergen, and marks rather than hides an item that
+carries it as a cross-contact risk — hiding that would let the filter read as
+the safety guarantee it says, at the control itself, that it is not. The strip
+offers the whole FSANZ vocabulary every time: a list built from the catalogue
+would be shorter, and its shortness would itself be a claim.
 
-Not built: cart, checkout, the customer account area, and every chef-admin
-screen — the catalogue editors, the allergen editor, the order queue, the
-prep sheet and the ledger.
+The **cart** is a guest cart in the signed session cookie. 01-DOMAIN.md names
+six collections and none of them is a cart, so there is no seventh; the cookie
+holds item ids and quantities only, and every price shown is read from the
+catalogue on the server, so a tampered cookie cannot change one. A line whose
+item has since been withdrawn is never dropped — it renders struck through and
+blocks checkout until the customer removes it. `04-WORKFLOWS.md` also owes a
+guest-cart merge on login; `cart.merge_into_user_cart` is the named seam for
+it and deliberately raises, because there is no login yet and a user-keyed
+cart has nowhere to live until the auth slice decides where.
+
+The add control sits on the item page rather than on a catalogue card. A card
+carries no allergen declaration and points at the page that does, so ordering
+from the page that shows what is in an item is the order this service
+encourages — at the cost of one click the customer was going to make anyway.
+
+Next slice: **checkout.** `04-WORKFLOWS.md` fixes what it does atomically —
+snapshot name, price and the full allergen block onto every line, compute the
+totals in integer cents, generate the `MP-YYMM-NNNN` reference, write the
+ledger charge and clear the cart. The `Checkout` button on the cart page is
+present and disabled so that seam is visible rather than absent.
+
+Not built: checkout, authentication and the customer account area, and every
+chef-admin screen — the catalogue editors, the allergen editor, the order
+queue, the prep sheet and the ledger.

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "macros/item_tabs.html" as tab_macros %}
+{% import "macros/cart.html" as cart_macros %}
 
 {% set item = detail.dish %}
 
@@ -44,6 +45,21 @@
       <p class="item-header__description">{{ item.description }}</p>
     {% endif %}
   </header>
+
+  {#
+    The add control sits between the header and the four tabs: after the
+    price, before the declaration, and on the page that carries both.
+  #}
+  <section class="cart-add-block" id="add-to-cart" aria-labelledby="order-this">
+    <h2 class="cart-add-block__heading" id="order-this">Order this dish</h2>
+    {{ cart_macros.add_to_cart(
+         item, 'dish',
+         url_for('public.dish_detail', slug=item.slug) ~ '#add-to-cart') }}
+    <p class="cart-add-block__note">
+      Read the allergen declaration below before you order. It is the
+      declaration for this dish and is complete.
+    </p>
+  </section>
 
   {% if detail.provenance %}
     {#

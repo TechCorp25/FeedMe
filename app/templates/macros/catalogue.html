@@ -1,6 +1,12 @@
-{# Catalogue card and the filter strip. Shared by both catalogues. #}
+{# Catalogue card and the filter strip. Shared by all three browse surfaces. #}
 
-{% macro item_card(item, detail_url) %}
+{#
+  `cautions` names the excluded allergens this item declares as a
+  cross-contact risk. It is empty unless the customer is excluding an
+  allergen, and it never repeats the item's own declaration — that lives
+  on the item page, in the allergen tab (01-DOMAIN.md).
+#}
+{% macro item_card(item, detail_url, cautions=[]) %}
   <li class="card">
     <article class="card__body">
       <h2 class="card__title">
@@ -20,6 +26,15 @@
             <li class="chip">Heat: {{ item.spice_label }}</li>
           {% endif %}
         </ul>
+      {% endif %}
+      {% if cautions %}
+        {# Shown, never hidden: a cross-contact risk is not a declared
+           ingredient, and hiding it would let the filter read as a safety
+           guarantee (04-WORKFLOWS.md). #}
+        <p class="card__caution">
+          Caution — may contain {{ cautions | join(', ') }}. Shown rather
+          than hidden; read the declaration on the item page.
+        </p>
       {% endif %}
       {# The price block is pushed to the foot of the card, so the rule above
          it lines up across a row whatever each card carries. #}
@@ -43,16 +58,17 @@
   A plain GET form: it submits without JavaScript, and every filtered view
   is a URL that can be linked, bookmarked and shared.
 
-  One macro serves both catalogues. They filter on different vocabularies
-  — component category, dish meal type — but the strip is the same
-  control, so the browse object names its facet and this stays a layout.
+  One macro serves all three browse surfaces. They filter on different
+  vocabularies — component category, dish meal type, and the menu on none
+  at all, because its meal type is the page — so the browse object names
+  its facet, or names none, and this stays a layout.
 #}
 {% macro catalogue_filters(browse, action_url) %}
   {% set facet = browse.select_facet %}
   <form class="filters" method="get" action="{{ action_url }}">
     <h2 class="filters__heading">Filter</h2>
 
-    {% if facet.choices %}
+    {% if facet and facet.choices %}
       <div class="filters__group">
         <label class="filters__label" for="filter-{{ facet.name }}">{{ facet.label }}</label>
         <select class="filters__select" id="filter-{{ facet.name }}" name="{{ facet.name }}">
@@ -90,6 +106,36 @@
         </p>
       </fieldset>
     {% endif %}
+
+    <fieldset class="filters__group filters__group--allergens">
+      <legend class="filters__label">Exclude allergens</legend>
+      {#
+        The whole controlled vocabulary, every time. A list built from the
+        catalogue would be shorter, and its shortness would read as a claim
+        that nothing here contains the missing allergen.
+      #}
+      <ul class="filters__options">
+        {% for choice in browse.allergen_choices %}
+          <li class="filters__option">
+            <input
+              type="checkbox"
+              id="filter-exclude-{{ choice.value }}"
+              name="exclude"
+              value="{{ choice.value }}"
+              {{ 'checked' if choice.selected else '' }}
+            >
+            <label for="filter-exclude-{{ choice.value }}">{{ choice.label }}</label>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="filters__warning" role="note">
+        <strong>This is a browsing aid, not a medical safeguard.</strong>
+        It hides items that declare the allergen. Items that <em>may</em>
+        contain it stay in the list, marked with a caution, because a
+        cross-contact risk is not the same as a declared ingredient.
+        Always read the full declaration on the item page.
+      </p>
+    </fieldset>
 
     <div class="filters__actions">
       <button class="btn" type="submit">Apply filters</button>

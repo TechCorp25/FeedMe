@@ -13,6 +13,7 @@ from pymongo import ASCENDING
 
 from app.db.client import get_db
 from app.db.repositories._common import parse_many, parse_one, to_object_id
+from app.models.allergens import AllergenCode
 from app.models.catalogue import Dish
 
 COLLECTION = "dishes"
@@ -26,9 +27,18 @@ _VISIBLE = {"is_available": True, "is_archived": False}
 def _visible_query(
     meal_type_id: str | None,
     preference_flags: Sequence[str],
+    exclude_allergens: Sequence[AllergenCode] = (),
 ) -> dict:
     """Build the browse query. Filters narrow visibility, never widen it."""
     query: dict = dict(_VISIBLE)
+    if exclude_allergens:
+        # Only `contains` is matched. An item whose `may_contain` names an
+        # excluded allergen stays in the result and is marked in the
+        # listing instead: hiding a cross-contact risk would let the
+        # filter read as a safety guarantee (04-WORKFLOWS.md).
+        query["allergens.contains"] = {
+            "$nin": [code.value for code in exclude_allergens]
+        }
     if meal_type_id is not None:
         # `meal_type_ids` is a list: a dish may sit under several meal
         # types, and matching one of them is enough.
@@ -44,10 +54,13 @@ def list_visible_dishes(
     *,
     meal_type_id: str | None = None,
     preference_flags: Sequence[str] = (),
+    exclude_allergens: Sequence[AllergenCode] = (),
 ) -> list[Dish]:
     cursor = (
         get_db()[COLLECTION]
-        .find(_visible_query(meal_type_id, preference_flags))
+        .find(
+            _visible_query(meal_type_id, preference_flags, exclude_allergens)
+        )
         .sort([("sort_order", ASCENDING), ("name", ASCENDING)])
     )
     return parse_many(Dish, cursor)
@@ -71,6 +84,29 @@ def visible_dish_preference_flags() -> list[str]:
     """
     values = get_db()[COLLECTION].distinct("preference_flags", dict(_VISIBLE))
     return sorted(value for value in values if isinstance(value, str))
+
+
+def list_visible_dishes_by_ids(ids: Sequence[str]) -> list[Dish]:
+    """Published dishes for the given ids, in the order they were given.
+
+    The customer-facing read by id. Ids that are malformed, unknown or
+    not published are dropped, so the publication rule stays in the query
+    rather than being re-checked by a caller.
+    """
+    wanted: list[str] = []
+    for value in ids:
+        if isinstance(value, str) and value not in wanted:
+            wanted.append(value)
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in wanted)
+        if object_id is not None
+    ]
+    if not object_ids:
+        return []
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}, **_VISIBLE})
+    found = {str(document["_id"]): document for document in cursor}
+    return parse_many(Dish, [found[value] for value in wanted if value in found])
 
 
 def get_visible_dish_by_slug(slug: str) -> Dish | None:
@@ -98,3 +134,35 @@ def chef_get_dish(dish_id: str) -> Dish | None:
 def chef_create_dish(dish: Dish) -> Dish:
     result = get_db()[COLLECTION].insert_one(dish.to_mongo())
     return dish.model_copy(update={"id": str(result.inserted_id)})
+
+# --- cart scope: sees a withdrawn item, by id, so a line can still render ---
+
+
+def list_dishes_for_cart(ids: Sequence[str]) -> list[Dish]:
+    """Dishes for cart lines, whatever their visibility, in id order.
+
+    A cart never silently drops a line (04-WORKFLOWS.md). A line whose
+    item has since been withdrawn still has to render — by name, struck
+    through, blocking checkout until the customer removes it — and that
+    needs a document the customer-facing read would refuse to return.
+
+    So this is a separately named function rather than a flag on the
+    visible read: the widened scope is visible at the call site, as
+    02-ARCHITECTURE.md requires of any scope that is not the default one.
+    Only the name of a withdrawn item reaches the customer; the cart
+    prices and orders nothing that is not visible.
+    """
+    wanted: list[str] = []
+    for value in ids:
+        if isinstance(value, str) and value not in wanted:
+            wanted.append(value)
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in wanted)
+        if object_id is not None
+    ]
+    if not object_ids:
+        return []
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}})
+    found = {str(document["_id"]): document for document in cursor}
+    return parse_many(Dish, [found[value] for value in wanted if value in found])

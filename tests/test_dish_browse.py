@@ -96,6 +96,16 @@ def seeded(db, meal_types):
     return db
 
 
+def cards_only(html: str) -> str:
+    """The catalogue grid alone, without the filter strip around it.
+
+    The allergen-exclusion control names every allergen in the controlled
+    vocabulary, so the page as a whole contains those words by design. The
+    rule these tests guard is about the cards.
+    """
+    return html.split('<ul class="catalogue-grid">')[1].split("</ul>")[0]
+
+
 def test_browse_lists_only_published_dishes(client, seeded):
     html = client.get("/dishes").get_data(as_text=True)
 
@@ -258,8 +268,9 @@ def test_browse_never_summarises_allergens_onto_a_card(client, seeded):
     assert "chip--may" not in html
     # No declared allergen is named: 'Milk' and 'Egg' are on two of the
     # seeded dishes and appear nowhere in the rendered cards.
-    assert "Milk" not in html
-    assert "Egg " not in html
+    cards = cards_only(html)
+    assert "Milk" not in cards
+    assert "Egg " not in cards
     assert "Full allergen declaration on the item page." in html
 
 

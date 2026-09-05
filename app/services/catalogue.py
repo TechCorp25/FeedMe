@@ -8,6 +8,11 @@ Both catalogues are wired up here. `components` and `dishes` are separate
 catalogues with separate queries (01-DOMAIN.md); they share the browse
 *shape* — a validated filter set, the facets the filter strip needs, and
 labels resolved for display — but never a query.
+
+Three browse surfaces are served: the two catalogues, and the meal-type
+menu, which is the dish catalogue entered through a meal type in the path
+rather than through a query parameter (04-WORKFLOWS.md). All three offer
+the same preference and allergen-exclusion controls.
 """
 
 from __future__ import annotations
@@ -18,14 +23,26 @@ from dataclasses import dataclass, field
 from app.db.repositories import components as components_repo
 from app.db.repositories import dishes as dishes_repo
 from app.db.repositories import meal_types as meal_types_repo
+from app.models.allergens import ALLERGEN_LABELS, AllergenCode
 from app.models.catalogue import (
     COMPONENT_CATEGORY_LABELS,
     Component,
     ComponentCategory,
     Dish,
+    ItemBase,
     MealType,
     preference_flag_label,
 )
+
+#: Every declarable allergen, always offered, in the vocabulary's own order.
+#:
+#: Deliberately not read from the data, unlike every other facet here. A
+#: strip built from the catalogue would be shorter — and its shortness
+#: would itself be a claim: an allergen missing from the list would read
+#: as 'nothing here contains that'. The exclusion control is a browsing
+#: aid and is not allowed to make a statement about the catalogue's
+#: contents, so it offers the whole controlled vocabulary every time.
+EXCLUDABLE_ALLERGENS: tuple[AllergenCode, ...] = tuple(AllergenCode)
 
 
 @dataclass(frozen=True)
@@ -53,8 +70,109 @@ class FilterFacet:
     choices: list[FilterChoice]
 
 
+def _parse_preference_flags(
+    raw: Sequence[str], offered: Sequence[str]
+) -> tuple[str, ...]:
+    """Keep the requested flags that the catalogue actually offers.
+
+    Order follows `offered`, and duplicates collapse, so the same
+    selection always produces the same query and the same rendered chips
+    regardless of how the URL was assembled.
+    """
+    requested = {value.strip() for value in raw if value and value.strip()}
+    return tuple(flag for flag in offered if flag in requested)
+
+
+def _parse_excluded_allergens(raw: Sequence[str]) -> tuple[AllergenCode, ...]:
+    """Keep the values that name a real allergen, in vocabulary order.
+
+    Same rule as every other filter: an unrecognised value is dropped
+    rather than rejected. Dropping widens the result here, which is the
+    safe direction to fail — the customer is shown more than they asked
+    to see, never less, and the item pages still carry the declaration.
+    """
+    requested = {value.strip() for value in raw if value and value.strip()}
+    return tuple(code for code in EXCLUDABLE_ALLERGENS if code.value in requested)
+
+
+class _SharedFilters:
+    """The two controls every browse surface offers.
+
+    Mixed into each surface's own frozen filter dataclass, which supplies
+    the `preference_flags` and `exclude_allergens` fields. It holds no
+    fields of its own, so it does not disturb any dataclass signature.
+    """
+
+    preference_flags: tuple[str, ...]
+    exclude_allergens: tuple[AllergenCode, ...]
+
+    @property
+    def is_active(self) -> bool:
+        return bool(self.preference_flags or self.exclude_allergens)
+
+    def has_flag(self, flag: str) -> bool:
+        return flag in self.preference_flags
+
+    def excludes(self, code: AllergenCode) -> bool:
+        return code in self.exclude_allergens
+
+
+class _SharedFacets:
+    """The choice lists and cautions every browse surface renders.
+
+    Mixed into each surface's own frozen browse dataclass, which supplies
+    `filters` and `preference_flags`. The choice lists carry their own
+    labels and selected state so the template stays a layout and the
+    wording stays under test.
+    """
+
+    filters: _SharedFilters
+    preference_flags: list[str]
+
+    @property
+    def preference_choices(self) -> list[FilterChoice]:
+        return [
+            FilterChoice(
+                value=flag,
+                label=preference_flag_label(flag),
+                selected=self.filters.has_flag(flag),
+            )
+            for flag in self.preference_flags
+        ]
+
+    @property
+    def allergen_choices(self) -> list[FilterChoice]:
+        return [
+            FilterChoice(
+                value=code.value,
+                label=ALLERGEN_LABELS[code],
+                selected=self.filters.excludes(code),
+            )
+            for code in EXCLUDABLE_ALLERGENS
+        ]
+
+    def cautions_for(self, item: ItemBase) -> list[str]:
+        """Excluded allergens this item declares as a cross-contact risk.
+
+        An item whose `may_contain` names an excluded allergen is shown
+        rather than hidden, because hiding it would let the filter read
+        as a safety guarantee (04-WORKFLOWS.md). It carries this caution
+        instead. Only the allergens the customer themselves excluded are
+        named: this answers their query and is not a second copy of the
+        item's declaration, which stays on the item page.
+        """
+        return [
+            ALLERGEN_LABELS[code]
+            for code in self.filters.exclude_allergens
+            if code in item.allergens.may_contain
+        ]
+
+
+# --- components -------------------------------------------------------------
+
+
 @dataclass(frozen=True)
-class ComponentFilters:
+class ComponentFilters(_SharedFilters):
     """A validated browse selection.
 
     Every value here has already been checked against the catalogue.
@@ -64,22 +182,16 @@ class ComponentFilters:
 
     category: ComponentCategory | None = None
     preference_flags: tuple[str, ...] = ()
+    exclude_allergens: tuple[AllergenCode, ...] = ()
 
     @property
     def is_active(self) -> bool:
-        return self.category is not None or bool(self.preference_flags)
-
-    def has_flag(self, flag: str) -> bool:
-        return flag in self.preference_flags
+        return self.category is not None or super().is_active
 
 
 @dataclass(frozen=True)
-class ComponentBrowse:
-    """Everything the browse page renders.
-
-    The choice lists carry their own labels and selected state so the
-    template stays a layout and the wording stays under test.
-    """
+class ComponentBrowse(_SharedFacets):
+    """Everything the browse page renders."""
 
     items: list[Component]
     filters: ComponentFilters
@@ -102,17 +214,6 @@ class ComponentBrowse:
         ]
 
     @property
-    def preference_choices(self) -> list[FilterChoice]:
-        return [
-            FilterChoice(
-                value=flag,
-                label=preference_flag_label(flag),
-                selected=self.filters.has_flag(flag),
-            )
-            for flag in self.preference_flags
-        ]
-
-    @property
     def select_facet(self) -> FilterFacet:
         return FilterFacet(
             name="category",
@@ -131,23 +232,11 @@ def _parse_category(raw: str | None) -> ComponentCategory | None:
         return None
 
 
-def _parse_preference_flags(
-    raw: Sequence[str], offered: Sequence[str]
-) -> tuple[str, ...]:
-    """Keep the requested flags that the catalogue actually offers.
-
-    Order follows `offered`, and duplicates collapse, so the same
-    selection always produces the same query and the same rendered chips
-    regardless of how the URL was assembled.
-    """
-    requested = {value.strip() for value in raw if value and value.strip()}
-    return tuple(flag for flag in offered if flag in requested)
-
-
 def browse_components(
     *,
     category: str | None = None,
     preference_flags: Sequence[str] = (),
+    exclude_allergens: Sequence[str] = (),
 ) -> ComponentBrowse:
     """Filtered component listing plus the facets for the filter strip.
 
@@ -159,11 +248,13 @@ def browse_components(
     filters = ComponentFilters(
         category=_parse_category(category),
         preference_flags=_parse_preference_flags(preference_flags, offered_flags),
+        exclude_allergens=_parse_excluded_allergens(exclude_allergens),
     )
     return ComponentBrowse(
         items=components_repo.list_visible_components(
             category=filters.category,
             preference_flags=filters.preference_flags,
+            exclude_allergens=filters.exclude_allergens,
         ),
         filters=filters,
         categories=components_repo.visible_component_categories(),
@@ -184,7 +275,7 @@ def get_component_detail(slug: str) -> Component | None:
 
 
 @dataclass(frozen=True)
-class DishFilters:
+class DishFilters(_SharedFilters):
     """A validated browse selection for the dish catalogue.
 
     Mirrors `ComponentFilters`, including the rule that matters most:
@@ -194,17 +285,15 @@ class DishFilters:
 
     meal_type: MealType | None = None
     preference_flags: tuple[str, ...] = ()
+    exclude_allergens: tuple[AllergenCode, ...] = ()
 
     @property
     def is_active(self) -> bool:
-        return self.meal_type is not None or bool(self.preference_flags)
-
-    def has_flag(self, flag: str) -> bool:
-        return flag in self.preference_flags
+        return self.meal_type is not None or super().is_active
 
 
 @dataclass(frozen=True)
-class DishBrowse:
+class DishBrowse(_SharedFacets):
     """Everything the dish browse page renders."""
 
     items: list[Dish]
@@ -233,17 +322,6 @@ class DishBrowse:
                 selected=meal_type.slug == selected_slug,
             )
             for meal_type in self.meal_types
-        ]
-
-    @property
-    def preference_choices(self) -> list[FilterChoice]:
-        return [
-            FilterChoice(
-                value=flag,
-                label=preference_flag_label(flag),
-                selected=self.filters.has_flag(flag),
-            )
-            for flag in self.preference_flags
         ]
 
     @property
@@ -303,6 +381,7 @@ def browse_dishes(
     *,
     meal_type: str | None = None,
     preference_flags: Sequence[str] = (),
+    exclude_allergens: Sequence[str] = (),
 ) -> DishBrowse:
     """Filtered dish listing plus the facets for the filter strip.
 
@@ -316,11 +395,13 @@ def browse_dishes(
     filters = DishFilters(
         meal_type=selected_meal_type,
         preference_flags=_parse_preference_flags(preference_flags, offered_flags),
+        exclude_allergens=_parse_excluded_allergens(exclude_allergens),
     )
     return DishBrowse(
         items=dishes_repo.list_visible_dishes(
             meal_type_id=selected_id,
             preference_flags=filters.preference_flags,
+            exclude_allergens=filters.exclude_allergens,
         ),
         filters=filters,
         meal_types=_offered_meal_types(selected_meal_type),
@@ -343,3 +424,91 @@ def get_dish_detail(slug: str) -> DishDetail | None:
             dish.component_refs
         ),
     )
+
+
+# --- the meal-type menu -----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MenuFilters(_SharedFilters):
+    """A validated selection for one meal type's menu.
+
+    The meal type is not here: on this surface it is the page, addressed
+    in the path, not a filter the customer can clear. Only the controls
+    that narrow *within* the menu belong in the filter set.
+    """
+
+    preference_flags: tuple[str, ...] = ()
+    exclude_allergens: tuple[AllergenCode, ...] = ()
+
+
+@dataclass(frozen=True)
+class MenuBrowse(_SharedFacets):
+    """One meal type's dishes.
+
+    The same dishes, the same cards and the same detail pages as
+    `/dishes` — the meal type is how the customer arrived, not a
+    different catalogue (04-WORKFLOWS.md).
+    """
+
+    meal_type: MealType
+    items: list[Dish]
+    filters: MenuFilters
+    preference_flags: list[str] = field(default_factory=list)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.items
+
+    @property
+    def select_facet(self) -> None:
+        """No single-select facet: the meal type is fixed by the path.
+
+        The filter macro renders whatever facet a browse object names, and
+        this one names none, so the strip drops the control rather than
+        offering a meal-type selector that would contradict the URL.
+        """
+        return None
+
+
+def browse_menu(
+    meal_type_slug: str,
+    *,
+    preference_flags: Sequence[str] = (),
+    exclude_allergens: Sequence[str] = (),
+) -> MenuBrowse | None:
+    """One meal type's dishes, or None when the slug names no meal type.
+
+    Unlike the `meal_type` query parameter, an unknown slug here is not
+    dropped: it is a path that names nothing, and the honest answer is a
+    404 rather than silently serving the whole catalogue under a heading
+    the customer did not ask for.
+    """
+    meal_type = meal_types_repo.get_meal_type_by_slug(meal_type_slug)
+    if meal_type is None:
+        return None
+    offered_flags = dishes_repo.visible_dish_preference_flags()
+    filters = MenuFilters(
+        preference_flags=_parse_preference_flags(preference_flags, offered_flags),
+        exclude_allergens=_parse_excluded_allergens(exclude_allergens),
+    )
+    return MenuBrowse(
+        meal_type=meal_type,
+        items=dishes_repo.list_visible_dishes(
+            meal_type_id=meal_type.id,
+            preference_flags=filters.preference_flags,
+            exclude_allergens=filters.exclude_allergens,
+        ),
+        filters=filters,
+        preference_flags=offered_flags,
+    )
+
+
+def list_menu_meal_types() -> list[MealType]:
+    """Meal types with at least one visible dish, in the chef's order.
+
+    The entry points the `/menu` surface actually has. A meal type no
+    published dish carries is not offered, so a link from the dish
+    catalogue never lands on an empty menu.
+    """
+    return _offered_meal_types(None)

@@ -10,6 +10,24 @@
     own full allergen declaration on its own page.
   </p>
 
+  {% if menu_meal_types %}
+    {# The third ordering entry point, reached from the second: the same
+       dishes under a meal type of their own (04-WORKFLOWS.md). #}
+    <nav class="entry-points" aria-label="Menus by meal type">
+      <span class="entry-points__label">Browse a menu</span>
+      <ul class="entry-points__list">
+        {% for meal_type in menu_meal_types %}
+          <li>
+            <a
+              class="entry-points__link"
+              href="{{ url_for('public.menu', meal_type_slug=meal_type.slug) }}"
+            >{{ meal_type.name }}</a>
+          </li>
+        {% endfor %}
+      </ul>
+    </nav>
+  {% endif %}
+
   {{ catalogue_macros.catalogue_filters(browse, url_for('public.dishes')) }}
 
   {% if browse.is_empty %}
@@ -30,7 +48,9 @@
     <ul class="catalogue-grid">
       {% for item in browse.items %}
         {{ catalogue_macros.item_card(
-             item, url_for('public.dish_detail', slug=item.slug)) }}
+             item,
+             url_for('public.dish_detail', slug=item.slug),
+             browse.cautions_for(item)) }}
       {% endfor %}
     </ul>
   {% endif %}
