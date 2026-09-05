@@ -6,6 +6,7 @@
 app/
   __init__.py            create_app() factory
   config.py              env-driven config classes
+  deployment.py          platform detection (local, Codespaces, Railway, Render)
   extensions.py          login_manager, mongo client, csrf
   db/
     client.py            MongoClient singleton, get_db()
@@ -105,18 +106,23 @@ An unmarked route is a defect. Enforce with a startup check that iterates `app.u
 12-factor. No hardcoded hosts, no cloud-provider assumptions in application code.
 
 ```
-FLASK_ENV                 development | production
+FLASK_ENV                 development | production   (detected default)
 SECRET_KEY                required in production, no default
 MONGO_URI                 required
 MONGO_DB_NAME             required
 JWT_SECRET                required
-SESSION_COOKIE_SECURE     true in production
+SESSION_COOKIE_SECURE     true in production        (detected default)
 STORAGE_BACKEND           local
 STORAGE_LOCAL_PATH
-BASE_URL
+BASE_URL                  required in production    (detected default)
+DEPLOY_PLATFORM           local | codespaces | railway | render, forces detection
+PORT                      port to bind              (detected default)
+TRUST_PROXY_HEADERS       read X-Forwarded-*        (detected default)
 ```
 
 Production config asserts every required variable is present **when the config object is constructed** — `load_config()` / `ProductionConfig()`, which `create_app` calls before anything else touches the environment — and refuses to start otherwise. Never fall back to a development secret.
+
+`app/deployment.py` detects the host — a workstation, a GitHub Codespace, Railway or Render — from the variables that host sets, and supplies the defaults marked above: the external origin, the port, whether TLS is terminated upstream, and which `FLASK_ENV` to assume. This is not a cloud-provider assumption in application code: nothing branches on the platform, the platform only answers questions about itself, and every answer is overridden by stating the variable explicitly. A managed host defaults to production, so a deploy that omits `FLASK_ENV` gets the hardened configuration and fails loudly on a missing secret rather than serving a development one on a public URL. `05-DEPLOYMENT.md` covers the per-platform detail.
 
 The assertion is deliberately not at import time. `import app.config` must succeed in a shell, in tooling and during test collection without a full production environment; an import-time assertion would make the configuration tests themselves unrunnable. Construction is the earliest point that still leaves the module importable.
 

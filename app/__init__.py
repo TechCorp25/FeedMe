@@ -12,10 +12,12 @@ import logging
 
 from flask import Flask, render_template
 from pymongo import MongoClient
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import BaseConfig, load_config
 from app.db import client as db_client
 from app.db.indexes import ensure_indexes
+from app.deployment import describe
 from app.extensions import csrf, login_manager
 from app.security.decorators import assert_routes_marked
 
@@ -42,6 +44,7 @@ def create_app(
     app.config.from_object(resolved)
     app.config["BOOTSTRAP_INDEXES"] = getattr(resolved, "BOOTSTRAP_INDEXES", True)
 
+    _trust_forwarded_headers(app)
     _init_extensions(app, mongo_client)
     _register_template_filters(app)
     _register_blueprints(app)
@@ -53,8 +56,29 @@ def create_app(
 
     # Last: a route registered after this point would not be checked.
     assert_routes_marked(app)
-    app.logger.info("application ready", extra={"env": resolved.ENV})
+    app.logger.info(
+        "application ready",
+        extra={"env": resolved.ENV, **describe(resolved.PLATFORM)},
+    )
     return app
+
+
+def _trust_forwarded_headers(app: Flask) -> None:
+    """Read `X-Forwarded-*` only where a platform proxy always sets it.
+
+    Codespaces, Railway and Render each terminate TLS in front of the
+    process, so without this the app sees plain HTTP on an internal host:
+    external URLs would be built as `http://`, and `SESSION_COOKIE_SECURE`
+    would drop the session cookie it just set. Off by default anywhere
+    else, because a forwarded header a client can set is a lie.
+    """
+    if not app.config.get("TRUST_PROXY_HEADERS"):
+        return
+    # One hop: the platform's own edge. Trusting more would let a client
+    # prepend a value of its choosing.
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1
+    )
 
 
 def _init_extensions(app: Flask, mongo_client: MongoClient | None) -> None:

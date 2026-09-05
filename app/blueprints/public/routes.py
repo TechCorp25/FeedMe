@@ -82,6 +82,10 @@ def health() -> tuple[dict, int]:
 
     Returns 503 when the database cannot be reached, so a deployment
     check fails loudly rather than serving a half-wired application.
+
+    The detected platform and environment are reported so a deploy can be
+    confirmed to have resolved its host correctly without reading the
+    logs. Neither is a secret, and neither is read from user input.
     """
     database = "ok"
     status_code = 200
@@ -91,5 +95,9 @@ def health() -> tuple[dict, int]:
         current_app.logger.exception("health check: database ping failed")
         database = "unavailable"
         status_code = 503
-    return {"status": "ok" if status_code == 200 else "degraded",
-            "database": database}, status_code
+    return {
+        "status": "ok" if status_code == 200 else "degraded",
+        "database": database,
+        "platform": current_app.config["DEPLOY_PLATFORM"],
+        "environment": current_app.config["ENV"],
+    }, status_code

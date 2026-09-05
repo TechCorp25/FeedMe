@@ -11,7 +11,13 @@ import pytest
 def test_health_reports_a_live_database(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.get_json() == {"status": "ok", "database": "ok"}
+    assert response.get_json() == {
+        "status": "ok",
+        "database": "ok",
+        # Detected, not configured: a workstation is the "local" platform.
+        "platform": "local",
+        "environment": "testing",
+    }
 
 
 def test_health_reports_degraded_when_the_database_is_unreachable(app, client):

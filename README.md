@@ -13,6 +13,7 @@ The specification lives in [`docs/`](docs/) and is authoritative:
 | [`02-ARCHITECTURE.md`](docs/02-ARCHITECTURE.md) | Flask layout, layering, repository contract, auth, config |
 | [`03-FRONTEND.md`](docs/03-FRONTEND.md) | Tailwind, responsive and orientation rules, tabbed item view |
 | [`04-WORKFLOWS.md`](docs/04-WORKFLOWS.md) | Ordering flows, order state machine, chef-admin flows |
+| [`05-DEPLOYMENT.md`](docs/05-DEPLOYMENT.md) | Platform detection, required variables, Codespaces / Railway / Render |
 
 ## Stack
 
@@ -28,13 +29,47 @@ pip install -r requirements-dev.txt
 cp .env.example .env      # then fill in SECRET_KEY and JWT_SECRET
 ```
 
-A MongoDB instance must be reachable at `MONGO_URI`. The application
-applies its index bootstrap at startup and refuses to boot if the
-database is unreachable.
+A MongoDB instance must be reachable at `MONGO_URI` — a local server, or
+a MongoDB Atlas cluster over `mongodb+srv://`. The application applies its
+index bootstrap at startup and refuses to boot if the database is
+unreachable.
 
 ```bash
 flask --app wsgi run
 ```
+
+## Deployment
+
+The same code runs on a workstation, in a GitHub Codespace, on Railway
+and on Render. The platform is **detected**, not configured: the external
+origin, the port to bind, whether TLS is terminated upstream and which
+`FLASK_ENV` to assume are all read from the variables the host itself
+sets. Anything detected is overridden by stating that variable
+explicitly.
+
+| Host | Recognised by | Manifest |
+|---|---|---|
+| local | nothing else matched | — |
+| GitHub Codespaces | `CODESPACES`, `CODESPACE_NAME` | `.devcontainer/devcontainer.json` |
+| Railway | `RAILWAY_ENVIRONMENT` | `railway.json`, `Procfile` |
+| Render | `RENDER`, `RENDER_SERVICE_ID` | `render.yaml` |
+
+`SECRET_KEY`, `JWT_SECRET`, `MONGO_URI` and `MONGO_DB_NAME` are the values
+no platform can derive; production refuses to start without them. Set
+them in the platform's own variable store — never in this repository.
+
+```bash
+python scripts/env_report.py
+```
+
+Prints the detected platform, the resolved configuration and whether each
+secret is real or still a placeholder. It prints no secret values and
+touches no network. `GET /health` reports the same detection alongside a
+live database round-trip, and both Railway and Render gate a deploy on it.
+
+Per-platform setup, the Atlas network-allowlist requirement and the
+reasoning behind the forwarded-header handling are in
+[`docs/05-DEPLOYMENT.md`](docs/05-DEPLOYMENT.md).
 
 ## Design system
 
@@ -92,6 +127,11 @@ Boots the application and prints every route with its auth marker. It
 exits non-zero if any endpoint lacks one — the same check that runs
 inside `create_app`.
 
+`tests/test_deployment.py` covers platform detection: each host is
+recognised from the variables it really sets, an explicit value always
+beats a detected one, and `X-Forwarded-*` is honoured on a platform proxy
+and ignored everywhere else.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs three jobs on every pull request:
@@ -100,6 +140,7 @@ inside `create_app`.
 |---|---|
 | `pytest` | any test fails |
 | `route-marker check` | an endpoint lacks an explicit auth marker |
+| `deployment manifests` | a platform manifest is malformed, or detection resolves wrongly |
 | `compiled stylesheet is current` | `app.css` is out of date with `tailwind.css` |
 
 These are advisory until they are named as required status checks in the
@@ -115,7 +156,7 @@ read-only public catalogue:
 | Route | |
 |---|---|
 | `GET /` | landing page, server-rendered |
-| `GET /health` | liveness plus a database round-trip |
+| `GET /health` | liveness, a database round-trip, and the detected platform |
 | `GET /components` | components browse, filtered by a plain GET form |
 | `GET /components/<slug>` | one component, all four tab panels in the HTML |
 | `GET /dishes` | dishes browse, filtered by meal type and preference |

@@ -31,6 +31,22 @@ jobs:
       # Fails the build if any endpoint lacks an explicit auth marker.
       - run: python scripts/check_boot.py
 
+  deployment:
+    name: deployment manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      # Fails if Procfile, railway.json and render.yaml have drifted apart,
+      # or if a platform no longer resolves to the URL and port it should.
+      - run: python scripts/check_deployment.py
+      # The report must run anywhere, on any host, without a database.
+      - run: python scripts/env_report.py
+
   stylesheet:
     name: compiled stylesheet is current
     runs-on: ubuntu-latest

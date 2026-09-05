@@ -1,0 +1,26 @@
+{
+  "name": "FeedMe",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "features": {
+    // Node is here only for the Tailwind CLI. The compiled stylesheet is
+    // committed, so a Codespace can serve the app without ever running it.
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" }
+  },
+  "postCreateCommand": "pip install --user -r requirements-dev.txt && npm install",
+  "forwardPorts": [5000],
+  "portsAttributes": {
+    "5000": { "label": "FeedMe", "onAutoForward": "notify" }
+  },
+  "remoteEnv": {
+    "FLASK_ENV": "development",
+    "PORT": "5000"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "bradlc.vscode-tailwindcss"],
+      "settings": {
+        "python.testing.pytestEnabled": true
+      }
+    }
+  }
+}
