@@ -1,0 +1,31 @@
+# Render Blueprint. Create the service with "New > Blueprint" and point
+# it at this repository; Render reads this file on every deploy.
+#
+# Secrets are deliberately absent. `sync: false` makes Render ask for the
+# value once and store it on the service, so no credential is committed.
+services:
+  - type: web
+    name: feedme
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: 'gunicorn --bind "0.0.0.0:${PORT:-5000}" --workers "${WEB_CONCURRENCY:-2}" --timeout 60 --access-logfile - wsgi:app'
+    # Fails the deploy if the database round-trip does not answer, so a
+    # half-wired release never replaces a working one.
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      # Set once in the Render dashboard: the Atlas connection string.
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        sync: false
+      # BASE_URL, the port and the cookie flags are derived from
+      # RENDER_EXTERNAL_URL and PORT by app/deployment.py.
