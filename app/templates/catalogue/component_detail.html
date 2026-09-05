@@ -3,6 +3,9 @@
 
 {% block title %}{{ item.name }} — FeedMe{% endblock %}
 
+{# A calm single-column reading body: the tabs are prose, not a grid. #}
+{% block page_modifier %}page--reading{% endblock %}
+
 {% block head_scripts %}
   <script type="module" src="{{ url_for('static', filename='js/tabs.js') }}" defer></script>
 {% endblock %}
