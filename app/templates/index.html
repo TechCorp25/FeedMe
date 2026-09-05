@@ -3,15 +3,19 @@
 {% block title %}FeedMe — prepared meals{% endblock %}
 
 {% block content %}
+  {# The stamped header band: a label, then what it labels. #}
+  <p class="page__kicker">Prepared meals · Melbourne</p>
   <h1 class="page__title">FeedMe</h1>
   <p class="page__lede">
     A private meal-preparation service. Browse components and complete
     dishes, read the full allergen declaration for every item, and place
     an order.
   </p>
-  <p class="flex flex-wrap gap-3">
-    <a class="btn" href="{{ url_for('public.components') }}">Browse components</a>
+  <p class="mt-8 flex flex-wrap gap-3">
     <a class="btn" href="{{ url_for('public.dishes') }}">Browse dishes</a>
+    <a class="btn btn--ghost" href="{{ url_for('public.components') }}">
+      Browse components
+    </a>
   </p>
   <p class="page__note">
     The cart and checkout are still to come.

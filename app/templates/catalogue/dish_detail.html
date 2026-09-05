@@ -5,6 +5,9 @@
 
 {% block title %}{{ item.name }} — FeedMe{% endblock %}
 
+{# A calm single-column reading body: the tabs are prose, not a grid. #}
+{% block page_modifier %}page--reading{% endblock %}
+
 {% block head_scripts %}
   <script type="module" src="{{ url_for('static', filename='js/tabs.js') }}" defer></script>
 {% endblock %}
@@ -48,21 +51,19 @@
       into or overrides this dish's own four tabs (01-DOMAIN.md), so it sits
       outside them and says so.
     #}
-    <section class="mt-6 flex flex-col gap-3" aria-labelledby="made-with">
-      <h2 class="text-base font-semibold text-ink" id="made-with">Made with</h2>
+    <section class="provenance" aria-labelledby="made-with">
+      <h2 class="provenance__heading" id="made-with">Made with</h2>
       <ul class="chip-list">
         {% for component in detail.provenance %}
           <li>
             <a
-              class="chip min-h-touch underline underline-offset-4
-                     focus-visible:outline focus-visible:outline-2
-                     focus-visible:outline-offset-2 focus-visible:outline-accent"
+              class="provenance__link"
               href="{{ url_for('public.component_detail', slug=component.slug) }}"
             >{{ component.name }}</a>
           </li>
         {% endfor %}
       </ul>
-      <p class="max-w-prose text-sm text-muted">
+      <p class="max-w-prose font-serif text-sm text-ink-muted">
         These are our own components, listed so you can see what goes into
         this dish. They are not ordered or priced separately. The allergen
         declaration for this dish is its own and is complete below.

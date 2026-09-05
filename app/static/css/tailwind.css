@@ -2,36 +2,86 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens. Colours are declared here as RGB channels so Tailwind's
-   alpha modifiers work, and are the only place a raw colour appears. */
+/* Self-hosted, so the application needs no CDN at runtime and no network at
+   build time. Google ships both families as variable fonts, so one file per
+   family covers every weight the design asks for; `font-weight` names the
+   axis range rather than a single instance. Licences sit beside the files
+   (SIL OFL 1.1). */
+@font-face {
+  font-family: 'Big Shoulders Display';
+  src: url('../fonts/BigShouldersDisplay-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('../fonts/SourceSerif4-Variable.woff2') format('woff2');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('../fonts/SourceSerif4-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Design tokens — "Butcher's Label". Colours are declared here as RGB
+   channels so Tailwind's alpha modifiers work, and this is the only place a
+   raw colour appears. */
 @layer base {
   :root {
-    --color-surface: 250 250 249;
-    --color-raised: 255 255 255;
-    --color-ink: 28 25 23;
-    --color-muted: 87 83 78;
-    --color-line: 214 211 209;
-    --color-accent: 22 78 99;
+    color-scheme: light;
+    --color-ground: 239 232 218;
+    --color-surface: 247 243 234;
+    --color-ink: 34 27 19;
+    --color-ink-muted: 90 75 57;
+    --color-line: 207 195 172;
+    --color-accent: 47 93 70;
     --color-accent-ink: 255 255 255;
-    --color-allergen-contains: 127 29 29;
-    --color-allergen-may: 120 53 15;
+    --color-stamp: 122 54 38;
   }
 
   .dark {
-    --color-surface: 23 23 23;
-    --color-raised: 38 38 38;
-    --color-ink: 245 245 244;
-    --color-muted: 168 162 158;
-    --color-line: 68 64 60;
-    --color-accent: 125 211 252;
-    --color-accent-ink: 12 30 40;
-    --color-allergen-contains: 254 202 202;
-    --color-allergen-may: 253 230 138;
+    color-scheme: dark;
+    --color-ground: 25 20 16;
+    --color-surface: 34 27 21;
+    --color-ink: 237 227 210;
+    --color-ink-muted: 179 164 142;
+    --color-line: 58 47 37;
+    --color-accent: 127 179 154;
+    --color-accent-ink: 18 32 26;
+    --color-stamp: 201 118 86;
+  }
+
+  body {
+    @apply bg-ground font-serif text-ink;
+  }
+
+  /* Condensed and stamped, used only for names, headings and labels. The
+     casing is a stylistic transform, never baked into the markup, so the
+     accessible name and the text a test reads stay as authored. */
+  h1,
+  h2,
+  h3 {
+    @apply font-display uppercase tracking-wide;
   }
 
   h1 {
-    font-size: clamp(1.75rem, 1.2rem + 2.4vw, 2.75rem);
-    line-height: 1.15;
+    font-size: clamp(2.369rem, 1.8rem + 2.4vw, 3.157rem);
+    line-height: 1.05;
+  }
+
+  /* One focus treatment for every focusable element, so nothing can ship
+     without a visible ring. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--color-accent));
+    outline-offset: 2px;
   }
 
   /* The `hidden` attribute wins over any component class.
@@ -75,80 +125,97 @@
   /* @apply is reserved for genuinely repeated primitives (03-FRONTEND.md). */
   .btn {
     @apply inline-flex min-h-touch min-w-touch items-center justify-center
-           rounded-md bg-accent px-4 py-2 font-medium text-accent-ink
+           border-2 border-accent bg-accent px-5 py-2 font-display text-sm
+           uppercase tracking-wide text-accent-ink no-underline
+           transition-colors hover:border-ink hover:bg-ink hover:text-ground
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
 
   .btn--ghost {
-    @apply bg-transparent text-ink ring-1 ring-line;
+    @apply border-ink bg-transparent text-ink;
   }
 
   .skip-link {
-    @apply absolute left-2 z-50 -translate-y-16 rounded-md bg-raised px-4 py-2
-           text-ink ring-2 ring-accent focus:translate-y-2;
+    @apply absolute left-2 z-50 -translate-y-16 border-2 border-ink bg-surface
+           px-4 py-2 font-display uppercase tracking-wide text-ink
+           focus:translate-y-2;
   }
 
   .site-header {
-    @apply border-b border-line bg-raised;
+    @apply border-b-2 border-ink bg-surface;
     padding-top: env(safe-area-inset-top);
   }
 
   .site-header__inner {
-    @apply mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4
-           landscapeShort:py-2;
+    @apply mx-auto flex max-w-screen items-center justify-between gap-4 px-4
+           py-4 landscapeShort:py-2;
     padding-left: max(1rem, env(safe-area-inset-left));
     padding-right: max(1rem, env(safe-area-inset-right));
   }
 
   .site-header__brand {
-    @apply text-lg font-semibold text-ink no-underline;
+    @apply font-display text-lg uppercase tracking-wide text-ink no-underline;
   }
 
   .site-nav {
-    @apply mr-auto flex items-center gap-2;
+    @apply mr-auto flex items-center gap-1 overflow-x-auto;
   }
 
   .site-nav__link {
-    @apply inline-flex min-h-touch items-center rounded-md px-3 text-ink
-           underline underline-offset-4
+    @apply inline-flex min-h-touch shrink-0 items-center whitespace-nowrap
+           border-b-2 border-transparent px-3 font-display text-sm uppercase
+           tracking-wide text-ink no-underline hover:border-accent
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
 
   .page {
-    @apply mx-auto w-full max-w-5xl px-4 py-8 landscapeShort:py-4;
+    @apply mx-auto w-full max-w-screen px-4 py-10 landscapeShort:py-4;
     padding-left: max(1rem, env(safe-area-inset-left));
     padding-right: max(1rem, env(safe-area-inset-right));
   }
 
-  .page__title {
-    @apply font-semibold text-ink;
+  /* The reading pages — an item and its four tabs — keep a prose measure
+     rather than the catalogue's full width. Declared after `.page` so the
+     narrower value wins at equal specificity. */
+  .page--reading {
+    @apply max-w-3xl;
   }
 
+  .page__title {
+    @apply text-ink;
+  }
+
+  /* A stamped line above a title: what this page is, before its name. */
+  .page__kicker {
+    @apply mb-2 font-display text-xs uppercase tracking-widest text-ink-muted;
+  }
+
+  /* Reading text: the serif face, at a comfortable measure. */
   .page__lede {
-    @apply mt-4 max-w-prose text-base text-ink;
+    @apply mt-4 max-w-prose font-serif text-base text-ink;
   }
 
   .page__note {
-    @apply mt-4 max-w-prose text-sm text-muted;
+    @apply mt-4 max-w-prose font-serif text-sm text-ink-muted;
   }
 
   /* --- catalogue ---------------------------------------------------- */
 
   .catalogue__count {
-    @apply mt-6 text-sm text-muted;
+    @apply mt-6 font-display text-xs uppercase tracking-widest text-ink-muted;
   }
 
   /* 1 column on a small phone, 2 from sm, 3 from lg, 4 from xl
      (03-FRONTEND.md). */
   .catalogue-grid {
-    @apply mt-3 grid list-none grid-cols-1 gap-4 p-0
+    @apply mt-3 grid list-none grid-cols-1 gap-5 p-0
            sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
   }
 
   .card {
-    @apply rounded-lg border border-line bg-raised;
+    @apply border-2 border-ink bg-surface;
   }
 
   .card__body {
@@ -156,37 +223,39 @@
   }
 
   .card__title {
-    @apply text-lg font-semibold text-ink;
+    @apply font-display text-lg uppercase leading-tight tracking-wide text-ink;
   }
 
   .card__link {
     /* The whole title is the touch target, not an icon beside it. */
-    @apply inline-flex min-h-touch items-center text-ink underline
-           underline-offset-4
+    @apply inline-flex min-h-touch items-center text-ink no-underline
+           hover:underline hover:underline-offset-4
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
 
   .card__summary {
-    @apply text-sm text-ink;
+    @apply font-serif text-sm text-ink;
   }
 
   .card__price {
-    @apply mt-auto flex items-baseline gap-2 pt-2;
+    @apply mt-auto flex items-baseline gap-2 border-t border-line pt-3;
   }
 
   .card__amount,
   .item-header__amount {
-    @apply text-lg font-semibold text-ink;
+    @apply font-display text-lg uppercase tracking-wide text-ink;
   }
 
   .card__unit,
   .item-header__unit {
-    @apply text-sm text-muted;
+    @apply font-display text-xs uppercase tracking-widest text-ink-muted;
   }
 
+  /* Two lines are reserved whichever phrasing this item takes, so the rule
+     above the price lines up across a row of cards. */
   .card__allergen-lede {
-    @apply text-xs text-muted;
+    @apply min-h-[3em] font-serif text-xs text-ink-muted;
   }
 
   .breadcrumb {
@@ -194,20 +263,22 @@
   }
 
   .breadcrumb a {
-    @apply inline-flex min-h-touch items-center text-ink underline
-           underline-offset-4;
+    @apply inline-flex min-h-touch items-center font-display uppercase
+           tracking-widest text-accent no-underline hover:underline
+           hover:underline-offset-4;
   }
 
+  /* The stamped header band: a label, then its description. */
   .item-header {
-    @apply flex flex-col gap-3 border-b border-line pb-6;
+    @apply flex flex-col gap-3 border-b-2 border-ink pb-6;
   }
 
   .item-header__price {
-    @apply flex items-baseline gap-2;
+    @apply flex flex-wrap items-baseline gap-x-4 gap-y-1;
   }
 
   .item-header__description {
-    @apply max-w-prose text-base text-ink;
+    @apply max-w-prose font-serif text-base text-ink;
   }
 
   /* --- chips -------------------------------------------------------- */
@@ -220,46 +291,56 @@
     @apply gap-1.5;
   }
 
+  /* Taste metadata is deliberately round, so it can never be mistaken for
+     the square allergen stamp beside it. */
   .chip {
-    @apply inline-flex items-center rounded-full border border-line bg-surface
-           px-3 py-1 text-sm text-ink;
+    @apply inline-flex items-center rounded-pill border border-ink-muted
+           bg-transparent px-3 py-1 font-serif text-sm text-ink-muted;
   }
 
-  /* Allergen chips are compliance content: high contrast, never colour
-     alone, never abbreviated (03-FRONTEND.md). */
+  /* Allergen chips are a compliance surface: squared off like a stamp, never
+     colour alone, never abbreviated. They keep the serif face and their
+     authored casing — an allergen name carries qualifiers such as
+     "Cereals containing gluten (wheat, rye)", and condensed capitals slow
+     that down exactly where reading accuracy matters most. */
+  .chip--contains,
+  .chip--may {
+    @apply rounded-none border-2 px-3 py-1 font-serif text-sm;
+  }
+
   .chip--contains {
-    @apply border-allergen-contains bg-transparent font-semibold
-           text-allergen-contains;
+    @apply border-stamp font-semibold text-stamp;
   }
 
   .chip--may {
-    @apply border-allergen-may bg-transparent text-allergen-may;
+    @apply border-dashed border-ink-muted text-ink-muted;
   }
 
   /* --- tabs --------------------------------------------------------- */
 
   .item-tabs {
-    @apply mt-6;
+    @apply mt-8;
   }
 
   /* Horizontal scroller on small and rotated viewports: never wraps to two
      rows, never collapses into a <select> (03-FRONTEND.md). */
   .tab-strip {
     @apply -mx-4 flex snap-x snap-mandatory gap-1 overflow-x-auto
-           border-b border-line px-4 sm:mx-0 sm:px-0;
+           border-b-2 border-ink px-4 sm:mx-0 sm:px-0;
     scrollbar-width: thin;
   }
 
   .tab {
-    @apply inline-flex min-h-touch shrink-0 snap-start items-center
-           whitespace-nowrap rounded-t-md border-b-2 border-transparent px-4
-           text-ink no-underline
+    @apply -mb-0.5 inline-flex min-h-touch shrink-0 snap-start items-center
+           whitespace-nowrap border-b-2 border-transparent px-5 font-display
+           text-sm uppercase tracking-wide text-ink-muted no-underline
+           hover:text-ink
            focus-visible:outline focus-visible:outline-2
            focus-visible:-outline-offset-2 focus-visible:outline-accent;
   }
 
   .tab[aria-selected='true'] {
-    @apply border-accent font-semibold;
+    @apply border-accent text-accent;
   }
 
   .tab-panel {
@@ -270,28 +351,28 @@
   }
 
   .tab-panel__heading {
-    @apply text-xl font-semibold text-ink;
+    @apply text-xl text-ink;
   }
 
   .tab-panel__subheading,
   .allergens__heading {
-    @apply mt-5 text-base font-semibold text-ink;
+    @apply mt-5 font-display text-sm uppercase tracking-widest text-ink;
   }
 
   .tab-panel__note,
   .allergens__note,
   .allergens__reviewed {
-    @apply mt-3 max-w-prose text-sm text-muted;
+    @apply mt-3 max-w-prose font-serif text-sm text-ink-muted;
   }
 
   .notice {
-    @apply mt-3 max-w-prose rounded-md border border-line bg-raised p-3
+    @apply mt-3 max-w-prose border-2 border-ink bg-surface p-4 font-serif
            text-sm text-ink;
   }
 
   /* Neutral, never alarming, and never the words 'no allergens'. */
   .notice--pending {
-    @apply border-dashed text-muted;
+    @apply border-dashed border-ink-muted text-ink-muted;
   }
 
   /* --- item content ------------------------------------------------- */
@@ -307,7 +388,7 @@
 
   .ingredients__item,
   .steps__item {
-    @apply max-w-prose text-base text-ink;
+    @apply max-w-prose font-serif text-base text-ink;
   }
 
   .ingredients__name {
@@ -317,7 +398,7 @@
   .ingredients__quantity,
   .ingredients__optional,
   .ingredients__note {
-    @apply text-sm text-muted;
+    @apply text-sm text-ink-muted;
   }
 
   /* Separate the parts of an ingredient line so quantity, optionality and
@@ -338,21 +419,45 @@
   }
 
   .spec-list dt {
-    @apply text-sm font-semibold text-muted;
+    @apply font-display text-xs uppercase tracking-widest text-ink-muted;
   }
 
   .spec-list dd {
-    @apply m-0 text-base text-ink;
+    @apply m-0 font-serif text-base text-ink;
+  }
+
+  /* --- provenance --------------------------------------------------- */
+
+  /* A dish's referenced components. Display-only: it sits outside the four
+     tabs and never alters what they declare (01-DOMAIN.md). */
+  .provenance {
+    @apply mt-8 flex flex-col gap-3;
+  }
+
+  .provenance__heading {
+    @apply font-display text-sm uppercase tracking-widest text-ink;
+  }
+
+  .provenance__link {
+    @apply inline-flex min-h-touch items-center border-2 border-ink
+           bg-transparent px-3 py-1 font-display text-xs uppercase
+           tracking-widest text-ink no-underline hover:bg-ink
+           hover:text-ground
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
 
   /* --- filters ------------------------------------------------------ */
 
+  /* A plain GET form, laid out as one band on a wide screen and stacked on a
+     narrow one. */
   .filters {
-    @apply mt-6 flex flex-col gap-4 rounded-lg border border-line bg-raised p-4;
+    @apply mt-6 flex flex-col gap-4 border-2 border-ink bg-surface p-4
+           lg:flex-row lg:flex-wrap lg:items-start lg:gap-x-8;
   }
 
   .filters__heading {
-    @apply text-base font-semibold text-ink;
+    @apply text-sm text-ink lg:w-full;
   }
 
   .filters__group {
@@ -360,12 +465,12 @@
   }
 
   .filters__label {
-    @apply text-sm font-semibold text-ink;
+    @apply font-display text-xs uppercase tracking-widest text-ink-muted;
   }
 
   .filters__select {
-    @apply min-h-touch w-full max-w-xs rounded-md border border-line
-           bg-surface px-3 text-ink
+    @apply min-h-touch w-full max-w-xs border-2 border-ink bg-ground px-3
+           font-serif text-base text-ink
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
@@ -375,7 +480,7 @@
   }
 
   .filters__option {
-    @apply flex min-h-touch items-center gap-2 text-base text-ink;
+    @apply flex min-h-touch items-center gap-2 font-serif text-base text-ink;
   }
 
   .filters__option input,
@@ -394,15 +499,16 @@
   }
 
   .filters__hint {
-    @apply max-w-prose text-sm text-muted;
+    @apply max-w-prose font-serif text-sm text-ink-muted;
   }
 
   .filters__actions {
-    @apply flex flex-wrap gap-3;
+    @apply flex flex-wrap items-start gap-3 lg:ml-auto;
   }
 
   .site-footer {
-    @apply mx-auto max-w-5xl px-4 pb-8 text-sm text-muted;
+    @apply mx-auto max-w-screen border-t border-line px-4 pb-8 pt-6 font-serif
+           text-sm text-ink-muted;
     padding-bottom: max(2rem, env(safe-area-inset-bottom));
   }
 }

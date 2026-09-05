@@ -9,10 +9,6 @@
       {% if item.summary %}
         <p class="card__summary">{{ item.summary }}</p>
       {% endif %}
-      <p class="card__price">
-        <span class="card__amount">{{ item.price_cents | price }}</span>
-        <span class="card__unit">{{ item.unit_label }}</span>
-      </p>
       {% if item.preference_flag_labels or item.spice_level %}
         {# Taste metadata only. Allergen data lives on the detail page's
            allergen tab and is never summarised into a card chip. #}
@@ -25,6 +21,12 @@
           {% endif %}
         </ul>
       {% endif %}
+      {# The price block is pushed to the foot of the card, so the rule above
+         it lines up across a row whatever each card carries. #}
+      <p class="card__price">
+        <span class="card__amount">{{ item.price_cents | price }}</span>
+        <span class="card__unit">{{ item.unit_label }}</span>
+      </p>
       <p class="card__allergen-lede">
         {%- if item.allergens.declares_nothing -%}
           No declared allergens — full declaration on the item page.

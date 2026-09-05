@@ -36,6 +36,22 @@ database is unreachable.
 flask --app wsgi run
 ```
 
+## Design system
+
+The interface follows the **"Butcher's Label"** system: a condensed stamped
+label over a calm serif description, on a kraft-toned ground. Tokens, type
+scale, the two deliberate deviations and the reasoning are recorded in
+[`docs/03-FRONTEND.md`](docs/03-FRONTEND.md#visual-language--butchers-label).
+
+Both type families are self-hosted from `app/static/fonts/` under the SIL Open
+Font License 1.1, with each licence beside the font it covers. There is no CDN
+at runtime and no network access needed at build time.
+
+`tests/test_design_system.py` guards the parts that fail silently: a colour
+token defined for one theme only, a text pair dropping under 4.5:1, a font
+reference that resolves to nothing, and the allergen chips being told apart by
+colour alone.
+
 ## Stylesheet
 
 `app/static/css/app.css` is compiled output and is committed, so

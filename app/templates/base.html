@@ -22,7 +22,7 @@
     <script type="module" src="{{ url_for('static', filename='js/theme.js') }}"></script>
     {% block head_scripts %}{% endblock %}
   </head>
-  <body class="min-h-full bg-surface text-ink antialiased">
+  <body class="min-h-full antialiased">
     <a class="skip-link" href="#main">Skip to content</a>
 
     <header class="site-header">
@@ -34,7 +34,7 @@
         </nav>
         <button
           type="button"
-          class="btn btn--ghost"
+          class="btn btn--ghost shrink-0"
           data-theme-toggle
           hidden
           aria-pressed="false"
@@ -42,12 +42,14 @@
       </div>
     </header>
 
-    <main id="main" class="page">
+    <main id="main" class="page {% block page_modifier %}{% endblock %}">
       {% block content %}{% endblock %}
     </main>
 
     <footer class="site-footer">
-      <p>Prepared meals. Allergen information is provided for every item.</p>
+      <p class="max-w-prose">
+        Prepared meals. Allergen information is provided for every item.
+      </p>
     </footer>
   </body>
 </html>

@@ -7,10 +7,68 @@
 3. **Tailwind compiled, not CDN.** `npx tailwindcss -i static/css/tailwind.css -o static/css/app.css --minify`. Output is committed so deployment needs no Node runtime.
 4. **Progressive enhancement.** Every JS interaction has a working non-JS fallback (form POST + redirect).
 
+## Visual language — "Butcher's Label"
+
+The delivered design system. Every object in the interface — a dish, a
+component, an account — is presented as something specifically made and
+labelled, not picked off a shelf: a condensed stamped label over a calm serif
+description, on a kraft-toned ground.
+
+**Colour.** Eight tokens, each defined for both themes in `tailwind.css` as RGB
+channels so Tailwind's alpha modifiers keep working. This is the only place a
+raw colour appears.
+
+| Token | Light | Dark | Used as |
+|---|---|---|---|
+| `ground` | `#EFE8DA` | `#191410` | page background |
+| `surface` | `#F7F3EA` | `#221B15` | card, panel and header background |
+| `ink` | `#221B13` | `#EDE3D2` | primary text, component boundaries |
+| `ink-muted` | `#5A4B39` | `#B3A48E` | secondary text, `may_contain` |
+| `line` | `#CFC3AC` | `#3A2F25` | hairline dividers — decorative only |
+| `accent` | `#2F5D46` | `#7FB39A` | links, primary buttons, active tab, focus ring |
+| `accent-ink` | `#FFFFFF` | `#12201A` | button label on `accent` |
+| `stamp` | `#7A3626` | `#C97656` | the `contains` allergen declaration |
+
+Every text pair clears 4.5:1 in both themes; the lowest is `stamp` on `surface`
+in dark at 5.03:1. `line` is 1.4:1 and therefore never carries text or meaning —
+a boundary that identifies a component uses `ink` at 2px, not `line`.
+
+**Type.** Two self-hosted families, both SIL OFL 1.1, in `app/static/fonts/`
+with their licences beside them. Google publishes both as variable fonts, so
+one file per family covers every weight rather than one file per instance.
+
+- **Big Shoulders Display** (`font-display`) — names, headings, labels,
+  buttons, field labels. Uppercase and tracked, applied as a CSS transform so
+  the accessible name and the text in the markup stay as authored.
+- **Source Serif 4** (`font-serif`) — every run of reading text.
+
+Scale is a perfect fourth (1.333) from a 16px base; headings `1.05`, body `1.6`.
+
+**Shape.** Radius is near-zero throughout (2px default, 1px small) because a
+stamped label is boxy. The one exception is the taste-preference chip, which is
+a pill so it can never be mistaken for the square allergen stamp beside it.
+
+**Two deliberate deviations from the delivered system**, both in service of
+rules this document already sets:
+
+1. *Allergen chips keep the serif face and their authored casing.* The system
+   sets every stamped label in condensed uppercase. An allergen name here
+   carries qualifiers — "Cereals containing gluten (wheat, rye)" — and
+   condensed capitals slow that down exactly where reading accuracy matters
+   most. The chips still take the stamped box: squared off, 2px border,
+   `stamp` for `contains` and a dashed `ink-muted` for `may_contain`, so the
+   two are distinguished by border style and wording as well as by colour.
+2. *The tab strip stays four anchors, and no panel is hidden in the served
+   HTML.* The system's item detail ships `role="tab"` buttons with panels
+   pre-hidden server-side. That breaks Principle 1 above: `tabs.js` is what
+   turns the strip into a tablist and hides panels, and only once it has run.
+
 ## Tailwind conventions
 
 - Utilities in markup. No `@apply` except for genuinely repeated primitives (`.btn`, `.chip`, `.tab`) defined in `tailwind.css`.
-- Design tokens in `tailwind.config.js` — colours, spacing scale, font stack. No arbitrary hex values inline.
+- Design tokens in `tailwind.config.js` — colours, type scale, spacing, radius. Values live in
+  `tailwind.css` as CSS custom properties. No arbitrary hex values inline.
+- Fonts are self-hosted from `app/static/fonts/`. No CDN at runtime, no network at build time.
 - Jinja macros for repeated structures: item card, allergen chip, tab strip, quantity stepper, price display.
 - Dark mode: `class` strategy, toggle persisted in `localStorage`, honours `prefers-color-scheme` on first visit.
 
