@@ -95,3 +95,46 @@ def test_a_tampered_token_is_rejected(app, client, customer):
 def test_refresh_rotation_is_not_designed_yet():
     with pytest.raises(NotImplementedError):
         issue_refresh_token("u1")
+
+
+def test_the_token_route_authenticates_through_the_shared_service(client, db):
+    """One authenticator for both surfaces (02-ARCHITECTURE.md).
+
+    `last_login_at` is stamped by `accounts.authenticate` and by nothing
+    else, so seeing it move proves the token route goes through the same
+    call the sign-in form does — and therefore gets the same length
+    bound and the same Argon2 rehash.
+    """
+    from app.services import accounts
+
+    password = "a-long-enough-passphrase"
+    with client.application.app_context():
+        accounts.register_customer(
+            email="ada@example.com",
+            password=password,
+            password_confirmation=password,
+        )
+    assert db["users"].find_one({"email": "ada@example.com"})["last_login_at"] is None
+
+    response = client.post(
+        "/api/auth/token",
+        json={"email": "ada@example.com", "password": password},
+    )
+
+    assert response.status_code == 200
+    assert db["users"].find_one({"email": "ada@example.com"})["last_login_at"]
+
+
+def test_the_token_route_refuses_an_over_long_password_like_the_form(client, db):
+    """The bound the service applies, applied here too."""
+    from app.services import accounts
+
+    response = client.post(
+        "/api/auth/token",
+        json={
+            "email": "ada@example.com",
+            "password": "x" * (accounts.MAX_PASSWORD_LENGTH + 1),
+        },
+    )
+
+    assert response.status_code == 401

@@ -207,3 +207,21 @@ def test_a_rehash_is_written_when_argon2_asks_for_one(app, db, customer, monkeyp
         stored = db["users"].find_one({"email": "ada@example.com"})["password_hash"]
         assert stored != original
         assert users_repo.get_user_by_email("ada@example.com") is not None
+
+
+def test_deactivating_an_account_ends_its_existing_session(client, db, customer):
+    """A session outlives the credentials that created it.
+
+    The active check at sign-in only covers sign-in. Without one on the
+    session itself, a customer deactivated after signing in keeps every
+    page they already had — including placing orders — until their cookie
+    expires.
+    """
+    sign_in(client)
+    assert not client.get("/checkout").headers["Location"].startswith("/login")
+
+    db["users"].update_one(
+        {"email": "ada@example.com"}, {"$set": {"is_active": False}}
+    )
+
+    assert client.get("/checkout").headers["Location"].startswith("/login")

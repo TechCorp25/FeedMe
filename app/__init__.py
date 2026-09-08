@@ -89,9 +89,18 @@ def _init_extensions(app: Flask, mongo_client: MongoClient | None) -> None:
 
     @login_manager.user_loader
     def load_user(user_id: str):  # noqa: ANN202 — Flask-Login callback
+        """The signed-in user, or None if the account is no longer active.
+
+        The active check belongs here rather than only at sign-in: a
+        session outlives the credentials that created it, so an account
+        deactivated after someone signed in would otherwise keep working
+        until their cookie expired. Returning None ends the session on
+        the next request instead.
+        """
         from app.db.repositories.users import get_user
 
-        return get_user(user_id)
+        user = get_user(user_id)
+        return user if user is not None and user.is_active else None
 
 
 def _register_template_filters(app: Flask) -> None:

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "macros/allergens.html" as allergen_macros %}
 
 {% block title %}Checkout — FeedMe{% endblock %}
 
@@ -13,21 +14,31 @@
   </p>
 
   <h2 class="tab-panel__heading">Your order</h2>
-  <ul class="cart-lines">
+  <p class="page__note">
+    The declaration under each item is the one that will be fixed onto your
+    order. It is shown here, before you confirm, because it is what the
+    order will say — and an item's declaration can have changed since you
+    read its page.
+  </p>
+
+  <ul class="order-lines">
     {% for entry in view.entries %}
-      <li class="cart-line">
-        <div class="cart-line__item">
+      <li class="order-line">
+        <div class="order-line__head">
           <h3 class="cart-line__name">{{ entry.name }}</h3>
           <p class="cart-line__price">
             <span class="cart-line__amount">{{ entry.unit_price_cents | price }}</span>
             <span class="cart-line__unit">{{ entry.item.unit_label }}</span>
             <span class="cart-line__unit">× {{ entry.quantity }}</span>
           </p>
+          <p class="cart-line__total">
+            <span class="visually-hidden">Line total</span>
+            {{ entry.line_total_cents | price }}
+          </p>
         </div>
-        <p class="cart-line__total">
-          <span class="visually-hidden">Line total</span>
-          {{ entry.line_total_cents | price }}
-        </p>
+        <div class="order-line__allergens">
+          {{ allergen_macros.allergen_declaration(entry.item.allergens) }}
+        </div>
       </li>
     {% endfor %}
   </ul>
@@ -43,6 +54,14 @@
 
   <form class="form" method="post" action="{{ url_for('order.place_order') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {#
+      Two guards, both server-checked: the token is spent when an order is
+      written, so this form cannot confirm twice; the digest describes the
+      lines and prices shown above, so a cart that changed in another tab
+      is re-shown rather than silently ordered.
+    #}
+    <input type="hidden" name="checkout_token" value="{{ checkout_token }}">
+    <input type="hidden" name="review_digest" value="{{ review_digest }}">
 
     <div class="form__field">
       <label class="form__label" for="requested_for">Date you would like this</label>

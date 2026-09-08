@@ -24,9 +24,11 @@ order that does not exist. It is logged at ERROR when it happens.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.db.repositories import ledger as ledger_repo
 from app.db.repositories import orders as orders_repo
@@ -61,8 +63,49 @@ REFERENCE_PREFIX = "MP"
 REFERENCE_ATTEMPTS = 5
 
 
+#: Below this, a reference fits `MP-YYMM-NNNN`. 01-DOMAIN.md fixes the
+#: four digits, so the month's capacity is a documented 9999 orders — far
+#: past anything one kitchen prepares. It is enforced rather than
+#: overflowed: a five-digit reference would sort below `-9999` in the
+#: lexical read that draws the next one, so the counter would hand out
+#: the same number for the rest of the month and every checkout after it
+#: would fail with nothing saying why.
+MAX_MONTHLY_SEQUENCE = 9999
+
+
 class CheckoutError(ValueError):
     """A refusal the customer can act on, with the wording to show them."""
+
+
+class ReferenceSpaceExhausted(RuntimeError):
+    """Raised when a month has used every `MP-YYMM-NNNN` it has.
+
+    Not a `CheckoutError`: there is nothing the customer can do about it,
+    and it is the chef's problem to hear about loudly.
+    """
+
+
+def business_today(timezone_name: str) -> date:
+    """Today in the kitchen's own timezone.
+
+    Every stored timestamp is UTC, and stays UTC. A date the customer
+    chooses is a different thing: between local midnight and UTC midnight
+    — ten hours, every day, in Melbourne — the UTC date is yesterday
+    here, so validating against it would offer the customer a date that
+    has already passed and accept it.
+
+    An unknown zone name falls back to UTC rather than refusing to serve
+    a page, and says so in the log: a misconfigured timezone is worth
+    fixing, but it is not worth a 500 on the checkout form.
+    """
+    try:
+        return datetime.now(ZoneInfo(timezone_name)).date()
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.error(
+            "unknown business timezone; falling back to UTC",
+            extra={"timezone": timezone_name},
+        )
+        return utcnow().date()
 
 
 @dataclass(frozen=True)
@@ -187,7 +230,35 @@ def next_reference(moment: date) -> str:
         tail = highest[len(prefix):]
         if tail.isdigit():
             sequence = int(tail)
+    if sequence + 1 > MAX_MONTHLY_SEQUENCE:
+        raise ReferenceSpaceExhausted(
+            f"{prefix} has issued all {MAX_MONTHLY_SEQUENCE} of its references"
+        )
     return f"{prefix}{sequence + 1:04d}"
+
+
+def review_digest(view: CartView) -> str:
+    """A fingerprint of exactly what the checkout page showed.
+
+    The confirmation POST resolves the cart and the catalogue again, and
+    without this it would place whatever that second read returned — a
+    quantity changed in another tab, an item added, a price the chef
+    edited while the page sat open. The customer would be charged for an
+    order they never saw. The digest covers every line, its quantity and
+    its unit price, so any of those changing is caught and the page is
+    shown again rather than confirmed silently.
+
+    It is not a security token: the cart is the customer's own, and a
+    customer editing their own digest only mis-states what they agreed
+    to. It exists to catch a stale page, so a plain hash is enough.
+    """
+    parts = [
+        f"{entry.item_type.value}:{entry.item_id}:{entry.quantity}:"
+        f"{entry.unit_price_cents}:{int(entry.is_available)}"
+        for entry in view.entries
+    ]
+    parts.append(f"total:{view.subtotal_cents}")
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
 
 
 def place_order(user: User, view: CartView, request: CheckoutRequest) -> Order:
@@ -207,6 +278,17 @@ def place_order(user: User, view: CartView, request: CheckoutRequest) -> Order:
         )
 
     lines = snapshot_lines(view)
+
+    if request.fulfilment is Fulfilment.DELIVERY and request.delivery_address:
+        # Before the order, deliberately. The address is the customer's,
+        # not the order's (01-DOMAIN.md keeps it on the user document),
+        # and an order written first would survive a failure here as a
+        # delivery with nowhere to deliver to. Failing before the order
+        # exists leaves nothing behind and the customer can simply
+        # confirm again.
+        if request.delivery_address != (user.delivery_address or ""):
+            users_repo.update_delivery_address(user.id, request.delivery_address)
+
     now = utcnow()
     order = Order(
         user_id=user.id,
@@ -226,14 +308,6 @@ def place_order(user: User, view: CartView, request: CheckoutRequest) -> Order:
     )
 
     placed = _create_with_reference(user.id, order, now.date())
-
-    if request.fulfilment is Fulfilment.DELIVERY and request.delivery_address:
-        # The address is the customer's, not the order's (01-DOMAIN.md
-        # keeps it on the user document), so it is stored where the chef
-        # and the account area both read it.
-        if request.delivery_address != (user.delivery_address or ""):
-            users_repo.update_delivery_address(user.id, request.delivery_address)
-
     _append_charge(placed)
     return placed
 

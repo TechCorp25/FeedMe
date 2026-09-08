@@ -9,6 +9,7 @@ a blocked cart and somebody else's order.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -85,11 +86,28 @@ def tomorrow() -> str:
     return (date.today() + timedelta(days=1)).isoformat()
 
 
+def hidden_field(html: str, name: str) -> str:
+    """Read a hidden input's value out of the rendered form.
+
+    The tests confirm the way a customer does — by opening the checkout
+    page and posting the form it rendered — because the token and the
+    digest on that form are what the POST checks. A test that fabricated
+    them would be testing a request no browser makes.
+    """
+    match = re.search(
+        rf'name="{re.escape(name)}" value="([^"]*)"', html
+    )
+    return match.group(1) if match else ""
+
+
 def place(client, **overrides):
+    page = client.get("/checkout").get_data(as_text=True)
     form = {
         "requested_for": tomorrow(),
         "fulfilment": "collection",
         "customer_note": "",
+        "checkout_token": hidden_field(page, "checkout_token"),
+        "review_digest": hidden_field(page, "review_digest"),
     }
     form.update(overrides)
     return client.post("/checkout", data=form)
@@ -468,3 +486,231 @@ def test_an_order_cannot_be_written_for_another_user(app, db):
                 "a" * 24,
                 Order(user_id="b" * 24, reference="MP-2609-9999"),
             )
+
+
+# --- what the review found --------------------------------------------------
+
+
+def test_the_review_shows_the_declaration_it_is_about_to_freeze(
+    signed_in, harissa
+):
+    """The declaration is on the page the customer confirms.
+
+    An item's allergen block can change between reading its catalogue
+    page and reaching checkout, and it is the block as it stands *here*
+    that is snapshotted onto the order. Showing it only afterwards, on
+    the confirmation page, is too late to be a declaration.
+    """
+    fill_cart(signed_in, "component", harissa)
+
+    page = signed_in.get("/checkout").get_data(as_text=True)
+
+    assert "Contains" in page
+    assert "Milk" in page
+    assert "May contain" in page
+    assert "Peanut" in page
+
+
+def test_the_date_the_form_offers_is_the_kitchens_own_date(
+    signed_in, harissa, monkeypatch
+):
+    """Melbourne, not UTC.
+
+    For the ten hours between local midnight and UTC midnight the UTC
+    date is yesterday here, so a form validating against it would offer —
+    and accept — a date that has already passed for the customer and the
+    kitchen.
+    """
+    fill_cart(signed_in, "component", harissa)
+    local_today = date(2026, 9, 9)
+    monkeypatch.setattr(
+        checkout_service, "business_today", lambda _timezone: local_today
+    )
+
+    page = signed_in.get("/checkout").get_data(as_text=True)
+    assert f'min="{local_today.isoformat()}"' in page
+
+    # The UTC date, one day behind, is refused rather than accepted.
+    response = place(signed_in, requested_for="2026-09-08")
+    assert response.status_code == 400
+    assert b"already passed" in response.data
+
+
+def test_business_today_reads_the_configured_timezone(app):
+    """The kitchen's clock, and a fallback that says so rather than 500s."""
+    from datetime import datetime as real_datetime
+    from zoneinfo import ZoneInfo
+
+    melbourne = checkout_service.business_today("Australia/Melbourne")
+    assert melbourne == real_datetime.now(ZoneInfo("Australia/Melbourne")).date()
+
+    with app.app_context():
+        assert app.config["BUSINESS_TIMEZONE"] == "Australia/Melbourne"
+
+    # An unknown zone is a misconfiguration worth fixing, not worth a 500
+    # on the checkout form.
+    assert checkout_service.business_today("Mars/Olympus_Mons") is not None
+
+
+def test_a_month_that_runs_out_of_references_refuses_rather_than_repeats(
+    signed_in, app, db, harissa
+):
+    """`MP-YYMM-NNNN` holds 9999 orders a month, and says when it is full.
+
+    A five-digit sequence sorts below `-9999` in the lexical read that
+    draws the next reference, so the counter would hand out the same
+    number for the rest of the month and every checkout after it would
+    fail with nothing saying why.
+    """
+    prefix = f"MP-{date.today():%y%m}-"
+    db["orders"].insert_one(
+        {"user_id": "someone", "reference": f"{prefix}9999", "status": "placed"}
+    )
+    fill_cart(signed_in, "component", harissa)
+
+    with app.app_context():
+        with pytest.raises(checkout_service.ReferenceSpaceExhausted):
+            checkout_service.next_reference(date.today())
+
+    response = place(signed_in)
+
+    assert response.status_code == 503
+    assert db["orders"].count_documents({"reference": {"$ne": f"{prefix}9999"}}) == 0
+    assert db["account_ledger"].count_documents({}) == 0
+
+
+def test_confirming_twice_places_one_order(signed_in, db, harissa):
+    """A double-clicked Place order is one order, not two.
+
+    The second POST carries a token the server has already spent, so it
+    is shown the order the first one wrote rather than writing another
+    order and another ledger charge.
+    """
+    fill_cart(signed_in, "component", harissa, "2")
+    page = signed_in.get("/checkout").get_data(as_text=True)
+    form = {
+        "requested_for": tomorrow(),
+        "fulfilment": "collection",
+        "checkout_token": hidden_field(page, "checkout_token"),
+        "review_digest": hidden_field(page, "review_digest"),
+    }
+
+    first = signed_in.post("/checkout", data=form)
+    second = signed_in.post("/checkout", data=form)
+
+    assert db["orders"].count_documents({}) == 1
+    assert db["account_ledger"].count_documents({}) == 1
+    reference = db["orders"].find_one({})["reference"]
+    assert first.headers["Location"] == f"/orders/{reference}"
+    # Sent to the order that exists, not told the cart is empty.
+    assert second.headers["Location"] == f"/orders/{reference}"
+
+
+def test_a_cart_that_changed_while_the_page_was_open_is_not_confirmed(
+    signed_in, db, harissa, ragu
+):
+    """The customer is charged for what they reviewed, or not at all."""
+    fill_cart(signed_in, "component", harissa)
+    page = signed_in.get("/checkout").get_data(as_text=True)
+    form = {
+        "requested_for": tomorrow(),
+        "fulfilment": "collection",
+        "checkout_token": hidden_field(page, "checkout_token"),
+        "review_digest": hidden_field(page, "review_digest"),
+    }
+
+    # Another tab adds a dish after the review page was rendered.
+    fill_cart(signed_in, "dish", ragu)
+
+    response = signed_in.post("/checkout", data=form)
+
+    assert response.status_code == 409
+    assert b"changed while this page was open" in response.data
+    assert db["orders"].count_documents({}) == 0
+
+    # The re-rendered page carries a digest for what it now shows, so
+    # confirming from it works.
+    refreshed = response.get_data(as_text=True)
+    form["review_digest"] = hidden_field(refreshed, "review_digest")
+    form["checkout_token"] = hidden_field(refreshed, "checkout_token")
+    assert signed_in.post("/checkout", data=form).status_code == 302
+    assert db["orders"].count_documents({}) == 1
+
+
+def test_a_price_change_while_the_page_is_open_is_not_confirmed(
+    signed_in, db, harissa
+):
+    fill_cart(signed_in, "component", harissa)
+    page = signed_in.get("/checkout").get_data(as_text=True)
+    form = {
+        "requested_for": tomorrow(),
+        "fulfilment": "collection",
+        "checkout_token": hidden_field(page, "checkout_token"),
+        "review_digest": hidden_field(page, "review_digest"),
+    }
+
+    db["components"].update_one(
+        {"slug": "harissa"}, {"$set": {"price_cents": 1600}}
+    )
+
+    response = signed_in.post("/checkout", data=form)
+
+    assert response.status_code == 409
+    assert db["orders"].count_documents({}) == 0
+
+
+def test_opening_checkout_with_a_blocked_cart_goes_back_to_the_cart(
+    signed_in, db, harissa
+):
+    """A bookmark or a stale tab meets the same rule the POST applies."""
+    fill_cart(signed_in, "component", harissa)
+    db["components"].update_one(
+        {"slug": "harissa"}, {"$set": {"is_available": False}}
+    )
+
+    response = signed_in.get("/checkout")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/cart"
+
+
+def test_a_deleted_item_does_not_break_the_checkout_page(
+    signed_in, db, harissa
+):
+    """A line with no item at all still resolves to a refusal, not a 500."""
+    fill_cart(signed_in, "component", harissa)
+    db["components"].delete_one({"slug": "harissa"})
+
+    assert signed_in.get("/checkout").headers["Location"] == "/cart"
+    assert signed_in.get("/cart").status_code == 200
+
+
+def test_an_address_that_cannot_be_saved_leaves_no_order_behind(
+    signed_in, db, harissa
+):
+    """The address is written before the order, so a failure writes nothing.
+
+    An order inserted first would survive this as a delivery with nowhere
+    to deliver to, and the retry would write a second one.
+    """
+    fill_cart(signed_in, "component", harissa)
+
+    from app.services import checkout as service
+
+    def failing_update(user_id, address):
+        raise RuntimeError("users collection unavailable")
+
+    real_update = service.users_repo.update_delivery_address
+    service.users_repo.update_delivery_address = failing_update
+    try:
+        with pytest.raises(RuntimeError):
+            place(
+                signed_in,
+                fulfilment="delivery",
+                delivery_address="12 Smith St, Fitzroy",
+            )
+    finally:
+        service.users_repo.update_delivery_address = real_update
+
+    assert db["orders"].count_documents({}) == 0
+    assert db["account_ledger"].count_documents({}) == 0

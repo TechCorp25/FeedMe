@@ -63,7 +63,34 @@ charged for an order that does not exist. It is logged at ERROR.
 *Also decided here:* `fulfilment = "delivery"` needs an address, and 01-DOMAIN.md
 keeps the address on the customer rather than on the order. What the customer
 types at checkout is therefore saved to `users.delivery_address` and the chef
-reads the current one; an order carries no address of its own.
+reads the current one; an order carries no address of its own. The address is
+written **before** the order, so a failure to save it leaves nothing behind
+rather than a delivery order with nowhere to deliver to.
+
+*Three more rules the confirmation keeps:*
+
+- The review page shows each item's **current allergen declaration** — the one
+  about to be frozen onto the order. A declaration can have changed since the
+  customer read the item's page, and showing it only afterwards would be a
+  declaration made after the decision.
+- The form carries a **single-use token** and a **digest of what it showed**.
+  The token is spent when an order is written, so a double-clicked confirm
+  shows the order it already placed instead of writing a second one; the digest
+  covers every line, quantity and unit price, so a cart changed in another tab
+  — or a price edited while the page sat open — re-renders the page rather than
+  charging for an order nobody reviewed. Two requests racing before either
+  replies still share one cookie and are not covered: that needs a durable
+  idempotency key on the order document, which is this document's to grant.
+- `requested_for` is validated against **the kitchen's own date**
+  (`BUSINESS_TIMEZONE`), not UTC. Stored timestamps stay UTC; a date a customer
+  picks is local, and for the ten hours between Melbourne midnight and UTC
+  midnight the two differ.
+
+A month's references are `MP-YYMM-0001` to `MP-YYMM-9999`. That ceiling is
+enforced rather than overflowed: a five-digit sequence sorts below `-9999` in
+the lexical read that draws the next number, so the counter would repeat itself
+and every checkout for the rest of the month would fail with nothing saying
+why. Exhausting it refuses the order loudly instead.
 
 ## Order state machine
 

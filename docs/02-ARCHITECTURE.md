@@ -112,6 +112,7 @@ MONGO_URI                 required
 MONGO_DB_NAME             required
 JWT_SECRET                required
 SESSION_COOKIE_SECURE     true in production        (detected default)
+BUSINESS_TIMEZONE         IANA zone for customer-facing dates (Australia/Melbourne)
 STORAGE_BACKEND           local
 STORAGE_LOCAL_PATH
 BASE_URL                  required in production    (detected default)

@@ -30,7 +30,17 @@ def client(app):
 
 @pytest.fixture()
 def db(app):
+    """The test database, without holding an application context open.
+
+    Deliberately not `with app.app_context(): yield get_db()`. Flask
+    reuses an already-pushed context for a request on the same app, so a
+    context held for the length of a test makes every request in it share
+    one `g` — and Flask-Login caches the signed-in user there. A test that
+    changed a user between two requests would then be served the first
+    request's cached user and pass while the application did the wrong
+    thing. Each request pushes its own context now, exactly as a served
+    request does.
+    """
     from app.db.client import get_db
 
-    with app.app_context():
-        yield get_db()
+    return get_db(app)

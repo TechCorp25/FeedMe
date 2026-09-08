@@ -231,6 +231,20 @@ rather than on the order. What is typed at checkout is saved to
 `users.delivery_address`, so an order carries no address of its own and the
 chef reads the current one.
 
+The confirmation form carries a single-use token and a digest of the lines and
+prices it displayed. A double-clicked Place order shows the order it already
+placed rather than writing a second one and a second ledger charge, and a cart
+that changed in another tab re-renders the page instead of being confirmed
+unseen. Two requests racing before either replies share one cookie and are not
+covered — that needs a durable idempotency key on the order document, which is
+a change to the schema `01-DOMAIN.md` owns.
+
+Dates are validated against the kitchen's own clock, `BUSINESS_TIMEZONE`
+(default `Australia/Melbourne`). Every stored timestamp stays UTC; a date a
+customer picks is a local one, and for the ten hours between Melbourne midnight
+and UTC midnight the two disagree — long enough to offer, and accept, a date
+that has already passed.
+
 `scripts/check_boot.py` now prints the whole URL map with the marker each
 endpoint carries, and exits non-zero on an unmarked one. It was an empty file
 passing a CI gate in silence; the gate now has something behind it.

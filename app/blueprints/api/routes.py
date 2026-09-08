@@ -5,10 +5,9 @@ from __future__ import annotations
 from flask import request
 
 from app.blueprints.api import bp
-from app.db.repositories.users import get_user_by_email
 from app.security.decorators import public_route
-from app.security.passwords import verify_password
 from app.security.tokens import issue_access_token
+from app.services import accounts
 from app.services import cart as cart_service
 
 
@@ -19,19 +18,19 @@ def issue_token() -> tuple[dict, int]:
 
     CSRF-exempt because it authenticates with credentials in the request
     body, not with a session cookie (see the factory).
+
+    Credentials are checked by `accounts.authenticate` — the same call
+    the sign-in form makes. Two surfaces authenticating the same
+    customers against the same collection must not drift: checking the
+    password here as well would leave a rule added to one silently
+    missing from the other, as the length bound, the Argon2 rehash and
+    the `last_login_at` stamp were (02-ARCHITECTURE.md).
     """
     payload = request.get_json(silent=True) or {}
-    email = str(payload.get("email", ""))
-    password = str(payload.get("password", ""))
 
-    user = get_user_by_email(email) if email else None
-    if user is None or not user.is_active or not verify_password(
-        user.password_hash, password
-    ):
+    user = accounts.authenticate(payload.get("email"), payload.get("password"))
+    if user is None or user.id is None:
         # One message for every failure mode: never reveal which part failed.
-        return {"error": "invalid_credentials"}, 401
-
-    if user.id is None:  # unsaved user: cannot happen for a stored record
         return {"error": "invalid_credentials"}, 401
 
     return {
