@@ -8,5 +8,9 @@ pydantic==2.8.2
 argon2-cffi==23.1.0
 PyJWT==2.13.0
 python-dotenv==1.2.2
+# The IANA zone database. Present on most Linux hosts, absent from slim
+# container images — and `BUSINESS_TIMEZONE` has to resolve wherever this
+# runs, or a customer is offered a date that has already passed locally.
+tzdata==2025.2
 # Production WSGI server. Railway and Render both run `gunicorn wsgi:app`.
 gunicorn==23.0.0

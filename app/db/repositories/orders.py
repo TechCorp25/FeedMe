@@ -8,13 +8,25 @@ intent is visible at the call site (02-ARCHITECTURE.md).
 
 from __future__ import annotations
 
+import re
+
 from pymongo import ASCENDING, DESCENDING
+from pymongo.errors import DuplicateKeyError
 
 from app.db.client import get_db
 from app.db.repositories._common import parse_many, parse_one, to_object_id
 from app.models.orders import TERMINAL_STATUSES, Order, OrderStatus
 
 COLLECTION = "orders"
+
+
+class ReferenceTaken(ValueError):
+    """Raised when the unique index on `reference` refuses an insert.
+
+    Two orders placed in the same second would otherwise be handed the
+    same number. The index is what decides; the caller draws the next
+    reference and tries again.
+    """
 
 
 def get_order(user_id: str, order_id: str) -> Order | None:
@@ -46,11 +58,32 @@ def list_orders(user_id: str, limit: int = 20) -> list[Order]:
 def create_order(user_id: str, order: Order) -> Order:
     if order.user_id != user_id:
         raise ValueError("order.user_id does not match the scoping user_id")
-    result = get_db()[COLLECTION].insert_one(order.to_mongo())
+    try:
+        result = get_db()[COLLECTION].insert_one(order.to_mongo())
+    except DuplicateKeyError as exc:
+        raise ReferenceTaken(order.reference) from exc
     return order.model_copy(update={"id": str(result.inserted_id)})
 
 
-# --- chef scope: deliberately not user-scoped -------------------------------
+def system_highest_reference(prefix: str) -> str | None:
+    """The largest reference already issued this month, or None.
+
+    `system_*`, like `chef_*`, is a deliberately named scope outside the
+    customer contract — the reference counter is drawn across every
+    customer's orders, so it cannot take a `user_id` and must not look as
+    though it forgot one. It returns a single reference string and never
+    a document, so no customer data leaves the collection through it, and
+    the unique index rather than this read is what settles a collision.
+    """
+    document = get_db()[COLLECTION].find_one(
+        {"reference": {"$regex": f"^{re.escape(prefix)}"}},
+        sort=[("reference", DESCENDING)],
+        projection={"reference": 1},
+    )
+    return document["reference"] if document else None
+
+
+# --- system and chef scope: deliberately not user-scoped --------------------
 
 
 def chef_get_order(order_id: str) -> Order | None:

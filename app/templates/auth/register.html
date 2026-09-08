@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Create an account — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block content %}
+  <h1 class="page__title">Create an account</h1>
+  <p class="page__lede">
+    You need an account to place an order — an order belongs to a customer,
+    and the kitchen prepares it for a named person. Anything already in your
+    cart comes with you.
+  </p>
+
+  <form class="form" method="post" action="{{ url_for('auth.register') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next_path }}">
+
+    <div class="form__field">
+      <label class="form__label" for="email">Email address</label>
+      <input
+        class="form__input"
+        id="email"
+        name="email"
+        type="email"
+        value="{{ email | default('', true) }}"
+        autocomplete="email"
+        inputmode="email"
+        required
+      >
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="display_name">Name</label>
+      <input
+        class="form__input"
+        id="display_name"
+        name="display_name"
+        type="text"
+        value="{{ display_name | default('', true) }}"
+        autocomplete="name"
+      >
+      <p class="form__hint">What the kitchen calls you on an order. Optional.</p>
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="password">Password</label>
+      <input
+        class="form__input"
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="new-password"
+        minlength="{{ min_password_length }}"
+        required
+      >
+      <p class="form__hint">
+        At least {{ min_password_length }} characters. Length is the only
+        rule — a long phrase you can remember beats a short one with a
+        symbol wedged into it.
+      </p>
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="password_confirmation">
+        Password again
+      </label>
+      <input
+        class="form__input"
+        id="password_confirmation"
+        name="password_confirmation"
+        type="password"
+        autocomplete="new-password"
+        required
+      >
+    </div>
+
+    <div class="form__actions">
+      <button class="btn" type="submit">Create account</button>
+      <a class="btn btn--ghost" href="{{ url_for('auth.login', next=next_path) }}">
+        I already have one
+      </a>
+    </div>
+  </form>
+{% endblock %}

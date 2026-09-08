@@ -74,6 +74,13 @@ class BaseConfig:
     MONGO_SERVER_SELECTION_TIMEOUT_MS = 5000
     STORAGE_BACKEND = "local"
 
+    #: The kitchen's own clock. Every stored timestamp is UTC, but a
+    #: *date* a customer chooses is a local one: for the ten hours between
+    #: Melbourne midnight and UTC midnight, "today" in UTC is yesterday
+    #: here, and a checkout that validated against it would offer a date
+    #: that has already passed. Only date arithmetic reads this.
+    BUSINESS_TIMEZONE = "Australia/Melbourne"
+
     def __init__(self, platform: Platform | None = None) -> None:
         self.PLATFORM: Platform = platform or detect()
         self.DEPLOY_PLATFORM = self.PLATFORM.name
@@ -91,6 +98,9 @@ class BaseConfig:
         self.MONGO_DB_NAME = os.environ.get("MONGO_DB_NAME", "feedme_dev")
         self.JWT_SECRET = os.environ.get("JWT_SECRET", "dev-jwt-not-for-production")
         self.STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "local")
+        self.BUSINESS_TIMEZONE = os.environ.get(
+            "BUSINESS_TIMEZONE", self.BUSINESS_TIMEZONE
+        )
         self.STORAGE_LOCAL_PATH = os.environ.get("STORAGE_LOCAL_PATH", "var/uploads")
         self.BASE_URL = (
             os.environ.get("BASE_URL")

@@ -9,13 +9,14 @@ Three concerns, in order below and kept apart:
 
 1. the shape and the pure operations over it — no Flask, no database;
 2. the store, which is the Flask session: 01-DOMAIN.md names six
-   collections and none of them is a cart, so a guest cart lives in the
-   signed session cookie rather than in a seventh. What the cookie holds
-   is ids and quantities; every price the customer is shown is read from
-   the catalogue on the server, so a tampered cookie cannot alter one.
-   04-WORKFLOWS.md also has the cart key to `user_id` once authenticated
-   and a guest cart merge on login — there is no login yet, so
-   `merge_into_user_cart` is where that goes and is not written here;
+   collections and none of them is a cart, so a cart lives in the signed
+   session cookie rather than in a seventh. What the cookie holds is ids
+   and quantities; every price the customer is shown is read from the
+   catalogue on the server, so a tampered cookie cannot alter one.
+   04-WORKFLOWS.md has the cart key to `user_id` once authenticated and a
+   guest cart merge on login: the cart is stamped with its owner, a cart
+   stamped for somebody else is never read, and `merge_into_user_cart`
+   folds the guest cart into it at sign-in;
 3. resolution, which pairs each line with its live catalogue item.
 """
 
@@ -24,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from flask import session
+from flask_login import current_user
 from pydantic import Field, ValidationError
 
 from app.db.repositories import components as components_repo
@@ -33,8 +35,14 @@ from app.models.catalogue import ItemBase
 from app.models.orders import ItemType
 from app.services import pricing
 
-#: Where the guest cart sits in the session.
+#: Where the cart's lines sit in the session.
 SESSION_KEY = "cart"
+
+#: Who the stored cart belongs to: a `user_id`, or absent for a guest.
+#: A cart is keyed to its owner rather than to the browser, so signing in
+#: as somebody else on a shared machine never inherits their cart
+#: (04-WORKFLOWS.md).
+SESSION_OWNER_KEY = "cart_owner"
 
 #: Bounds, so a scripted client cannot grow the session cookie without
 #: limit. Both are far above any real order and neither is a business
@@ -123,8 +131,18 @@ def remove_line(cart: Cart, item_type: ItemType, item_id: str) -> Cart:
 # --- the store --------------------------------------------------------------
 
 
+def current_owner_id() -> str | None:
+    """The `user_id` a cart saved right now belongs to, or None for a guest."""
+    return current_user.get_id() if current_user.is_authenticated else None
+
+
 def load_cart() -> Cart:
-    """The cart for this session, or an empty one.
+    """The cart for whoever is asking, or an empty one.
+
+    A cart stamped with an owner is read only by that owner: a customer
+    who signs out on a shared machine leaves nothing behind for the next
+    person, and the merge at sign-in is the only path from one cart into
+    another.
 
     Anything unreadable in the session is treated as an empty cart rather
     than an error. The session is signed, so a malformed value is not an
@@ -134,18 +152,36 @@ def load_cart() -> Cart:
     stored = session.get(SESSION_KEY)
     if not stored:
         return Cart()
+    if session.get(SESSION_OWNER_KEY) != current_owner_id():
+        return Cart()
     try:
         return Cart.model_validate({"lines": stored})
     except (ValidationError, TypeError):
         return Cart()
 
 
-def save_cart(cart: Cart) -> None:
-    """Write the cart back, or drop the key entirely when it is empty."""
+def save_cart(cart: Cart, *, owner_id: str | None = None) -> None:
+    """Write the cart back, stamped with its owner, or clear it when empty.
+
+    `owner_id` is only passed at sign-in, where the merge writes the
+    user's cart in the same request that authenticated them; every other
+    caller gets the owner of the current request.
+    """
     if not cart.lines:
-        session.pop(SESSION_KEY, None)
+        clear_cart()
         return
     session[SESSION_KEY] = [line.model_dump(mode="json") for line in cart.lines]
+    owner = owner_id if owner_id is not None else current_owner_id()
+    if owner is None:
+        session.pop(SESSION_OWNER_KEY, None)
+    else:
+        session[SESSION_OWNER_KEY] = owner
+
+
+def clear_cart() -> None:
+    """Drop the cart and its owner stamp. Sign-out and checkout both do this."""
+    session.pop(SESSION_KEY, None)
+    session.pop(SESSION_OWNER_KEY, None)
 
 
 def cart_item_count() -> int:
@@ -325,14 +361,34 @@ def parse_quantity(raw: str | None, *, default: int | None = None) -> int | None
     return _capped(quantity)
 
 
-def merge_into_user_cart(user_id: str, guest_cart: Cart) -> None:
-    """Seam for the guest-cart merge on login (04-WORKFLOWS.md).
+def merge_carts(base: Cart, incoming: Cart) -> tuple[Cart, list[CartLine]]:
+    """Fold `incoming` into `base`. Pure; no session, no database.
 
-    Deliberately unimplemented: there is no login yet, and a user-keyed
-    cart has nowhere to live until the auth slice decides where. Writing
-    it now would be a guess at that decision, not an implementation of it.
+    Quantities for the same item add up. A line that will not fit inside
+    `MAX_LINES` is returned rather than discarded, so the caller can say
+    so — a cart does not silently drop a line at sign-in any more than it
+    does anywhere else (04-WORKFLOWS.md).
     """
-    raise NotImplementedError(
-        "the guest-cart merge lands with the auth slice, which decides "
-        "where a user-keyed cart is stored"
-    )
+    merged = base
+    overflowed: list[CartLine] = []
+    for line in incoming.lines:
+        try:
+            merged = add_line(merged, line.item_type, line.item_id, line.quantity)
+        except CartFullError:
+            overflowed.append(line)
+    return merged, overflowed
+
+
+def merge_into_user_cart(user_id: str, guest_cart: Cart) -> list[CartLine]:
+    """Merge the guest cart into the signing-in customer's own cart.
+
+    Call it after `login_user`, with the cart read before it: the guest
+    cart is stamped with no owner, so once the request is authenticated
+    `load_cart` no longer returns it, and it has to be carried in by hand.
+
+    Returns the lines that did not fit, which is a list the caller shows
+    to the customer and never an empty promise.
+    """
+    merged, overflowed = merge_carts(load_cart(), guest_cart)
+    save_cart(merged, owner_id=user_id)
+    return overflowed

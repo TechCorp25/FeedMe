@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% import "macros/allergens.html" as allergen_macros %}
+
+{% block title %}Checkout — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block content %}
+  <h1 class="page__title">Checkout</h1>
+  <p class="page__lede">
+    Confirming fixes the price and the allergen declaration of every item as
+    they stand right now. A later change to the catalogue will not alter what
+    your order says.
+  </p>
+
+  <h2 class="tab-panel__heading">Your order</h2>
+  <p class="page__note">
+    The declaration under each item is the one that will be fixed onto your
+    order. It is shown here, before you confirm, because it is what the
+    order will say — and an item's declaration can have changed since you
+    read its page.
+  </p>
+
+  <ul class="order-lines">
+    {% for entry in view.entries %}
+      <li class="order-line">
+        <div class="order-line__head">
+          <h3 class="cart-line__name">{{ entry.name }}</h3>
+          <p class="cart-line__price">
+            <span class="cart-line__amount">{{ entry.unit_price_cents | price }}</span>
+            <span class="cart-line__unit">{{ entry.item.unit_label }}</span>
+            <span class="cart-line__unit">× {{ entry.quantity }}</span>
+          </p>
+          <p class="cart-line__total">
+            <span class="visually-hidden">Line total</span>
+            {{ entry.line_total_cents | price }}
+          </p>
+        </div>
+        <div class="order-line__allergens">
+          {{ allergen_macros.allergen_declaration(entry.item.allergens) }}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <dl class="cart-summary">
+    <dt>Total</dt>
+    <dd class="cart-summary__amount">{{ view.subtotal_cents | price }}</dd>
+  </dl>
+  <p class="page__note">
+    No payment is taken here. The total is added to your account balance and
+    settled with the chef directly.
+  </p>
+
+  <form class="form" method="post" action="{{ url_for('order.place_order') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {#
+      Two guards, both server-checked: the token is spent when an order is
+      written, so this form cannot confirm twice; the digest describes the
+      lines and prices shown above, so a cart that changed in another tab
+      is re-shown rather than silently ordered.
+    #}
+    <input type="hidden" name="checkout_token" value="{{ checkout_token }}">
+    <input type="hidden" name="review_digest" value="{{ review_digest }}">
+
+    <div class="form__field">
+      <label class="form__label" for="requested_for">Date you would like this</label>
+      <input
+        class="form__input form__input--short"
+        id="requested_for"
+        name="requested_for"
+        type="date"
+        value="{{ requested_for }}"
+        min="{{ today }}"
+        max="{{ latest }}"
+        required
+      >
+    </div>
+
+    <fieldset class="form__fieldset">
+      <legend class="form__label">Collection or delivery</legend>
+      {% for option in fulfilments %}
+        <div class="form__choice">
+          <input
+            id="fulfilment-{{ option.value }}"
+            name="fulfilment"
+            type="radio"
+            value="{{ option.value }}"
+            {{ 'checked' if fulfilment == option.value }}
+          >
+          <label for="fulfilment-{{ option.value }}">
+            {{ option.value | capitalize }}
+          </label>
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <div class="form__field">
+      <label class="form__label" for="delivery_address">Delivery address</label>
+      <textarea
+        class="form__input"
+        id="delivery_address"
+        name="delivery_address"
+        rows="3"
+        autocomplete="street-address"
+      >{{ delivery_address }}</textarea>
+      {#
+        Kept on the account, not on the order: 01-DOMAIN.md puts the address
+        on the customer, so what is typed here becomes the address on file
+        and the chef reads the current one.
+      #}
+      <p class="form__hint">
+        Needed if you choose delivery. It is saved to your account, so you
+        only type it once.
+      </p>
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="customer_note">Note for the kitchen</label>
+      <textarea
+        class="form__input"
+        id="customer_note"
+        name="customer_note"
+        rows="3"
+        maxlength="{{ note_limit }}"
+      >{{ customer_note }}</textarea>
+      <p class="form__hint">
+        Optional, up to {{ note_limit }} characters. A note is not an allergen
+        declaration — the declaration on each item above is what the kitchen
+        works from.
+      </p>
+    </div>
+
+    <div class="form__actions">
+      <button class="btn" type="submit">Place order</button>
+      <a class="btn btn--ghost" href="{{ url_for('order.cart') }}">Back to cart</a>
+    </div>
+  </form>
+{% endblock %}

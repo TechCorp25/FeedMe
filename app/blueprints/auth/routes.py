@@ -1,2 +1,143 @@
-"""No routes yet. Every route added here carries exactly one auth marker
-from app.security.decorators."""
+"""Registration, sign-in and sign-out.
+
+Sessions, not tokens: the web application authenticates with a
+Flask-Login session cookie, and `api/auth/token` serves a future mobile
+client against the same collection (02-ARCHITECTURE.md).
+
+Every form here posts and redirects. Nothing on this surface depends on
+JavaScript, and the CSRF token is on every one of them.
+"""
+
+from __future__ import annotations
+
+from flask import flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_user, logout_user
+
+from app.blueprints.auth import bp
+from app.models.users import User
+from app.security.decorators import login_required, public_route
+from app.security.redirects import safe_path
+from app.services import accounts
+from app.services import cart as cart_service
+
+
+def _next_destination() -> str:
+    """Where to land after signing in.
+
+    The value arrives from a query string or a hidden field, so it is
+    filtered to a same-site path; anything else falls back to the cart,
+    which is where a customer interrupted by a sign-in was heading.
+    """
+    candidate = safe_path(request.values.get("next"))
+    return candidate or url_for("order.cart")
+
+
+def _adopt_guest_cart(user: User, guest_cart: cart_service.Cart) -> None:
+    """Carry the cart built before sign-in into the customer's own.
+
+    Called with the cart read *before* `login_user`: once the request is
+    authenticated the guest cart is no longer the current owner's, so it
+    cannot be read back (04-WORKFLOWS.md).
+    """
+    overflowed = cart_service.merge_into_user_cart(user.get_id(), guest_cart)
+    if overflowed:
+        # Never dropped without saying so, here as anywhere else.
+        flash(
+            f"{len(overflowed)} item"
+            f"{'' if len(overflowed) == 1 else 's'} from your cart did not "
+            f"fit: a cart holds {cart_service.MAX_LINES} different items.",
+            "error",
+        )
+
+
+@bp.route("/login", methods=["GET", "POST"])
+@public_route
+def login():
+    """Sign in, then continue to wherever the customer was going."""
+    if current_user.is_authenticated:
+        return redirect(_next_destination())
+
+    if request.method == "GET":
+        return render_template("auth/login.html", next_path=_next_destination())
+
+    guest_cart = cart_service.load_cart()
+    user = accounts.authenticate(
+        request.form.get("email"), request.form.get("password")
+    )
+    if user is None:
+        # One message for every failure — no account, wrong password, a
+        # deactivated account — so the form cannot be used to find out
+        # which addresses are registered.
+        flash("Those details do not match an account.", "error")
+        return (
+            render_template(
+                "auth/login.html",
+                next_path=_next_destination(),
+                email=request.form.get("email", ""),
+            ),
+            401,
+        )
+
+    login_user(user)
+    _adopt_guest_cart(user, guest_cart)
+    flash(f"Signed in as {user.email}.", "success")
+    return redirect(_next_destination())
+
+
+@bp.route("/register", methods=["GET", "POST"])
+@public_route
+def register():
+    """Create a customer account and sign straight in with it."""
+    if current_user.is_authenticated:
+        return redirect(_next_destination())
+
+    if request.method == "GET":
+        return render_template(
+            "auth/register.html",
+            next_path=_next_destination(),
+            min_password_length=accounts.MIN_PASSWORD_LENGTH,
+        )
+
+    guest_cart = cart_service.load_cart()
+    try:
+        user = accounts.register_customer(
+            email=request.form.get("email"),
+            password=request.form.get("password"),
+            password_confirmation=request.form.get("password_confirmation"),
+            display_name=request.form.get("display_name"),
+        )
+    except accounts.RegistrationError as error:
+        flash(str(error), "error")
+        return (
+            render_template(
+                "auth/register.html",
+                next_path=_next_destination(),
+                min_password_length=accounts.MIN_PASSWORD_LENGTH,
+                email=request.form.get("email", ""),
+                display_name=request.form.get("display_name", ""),
+            ),
+            400,
+        )
+
+    login_user(user)
+    _adopt_guest_cart(user, guest_cart)
+    flash("Your account is ready.", "success")
+    return redirect(_next_destination())
+
+
+@bp.post("/logout")
+@login_required
+def logout():
+    """Sign out, and take the cart with it.
+
+    A cart belongs to its owner, so it leaves when they do: on a shared
+    machine the next person meets an empty cart rather than somebody
+    else's order (04-WORKFLOWS.md).
+
+    A POST, not a GET: a link that signs a customer out can be triggered
+    by anything that fetches it.
+    """
+    cart_service.clear_cart()
+    logout_user()
+    flash("You are signed out.", "success")
+    return redirect(url_for("public.index"))

@@ -45,6 +45,19 @@
             {{ cart_item_count }} item{{ '' if cart_item_count == 1 else 's' }}
           </span>
         </a>
+        {#
+          Sign-out is a POST: a link that signs a customer out can be
+          triggered by anything that fetches it, and it carries the CSRF
+          token like every other state-changing form here.
+        #}
+        {% if current_user.is_authenticated %}
+          <form class="site-nav__form" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn--ghost shrink-0" type="submit">Sign out</button>
+          </form>
+        {% else %}
+          <a class="site-nav__link" href="{{ url_for('auth.login') }}">Sign in</a>
+        {% endif %}
         <button
           type="button"
           class="btn btn--ghost shrink-0"

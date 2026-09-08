@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block content %}
+  <h1 class="page__title">Sign in</h1>
+  <p class="page__lede">
+    An account holds your orders, your allergen and dietary notes, and the
+    running balance the chef settles with you directly.
+  </p>
+
+  <form class="form" method="post" action="{{ url_for('auth.login') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next_path }}">
+
+    <div class="form__field">
+      <label class="form__label" for="email">Email address</label>
+      <input
+        class="form__input"
+        id="email"
+        name="email"
+        type="email"
+        value="{{ email | default('', true) }}"
+        autocomplete="email"
+        inputmode="email"
+        required
+      >
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="password">Password</label>
+      <input
+        class="form__input"
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required
+      >
+    </div>
+
+    <div class="form__actions">
+      <button class="btn" type="submit">Sign in</button>
+      <a class="btn btn--ghost" href="{{ url_for('auth.register', next=next_path) }}">
+        Create an account
+      </a>
+    </div>
+  </form>
+
+  {#
+    Stated rather than left to be discovered at a dead end: there is no
+    reset flow, because a reset is delivered by email and v1 sends nothing
+    (04-WORKFLOWS.md).
+  #}
+  <p class="page__note">
+    Forgotten your password? There is no automatic reset yet — ask the chef
+    to set a new one for you.
+  </p>
+{% endblock %}
