@@ -434,7 +434,7 @@ def test_another_customers_order_is_a_404_not_a_403(signed_in, app, db, harissa)
         )
     signed_in.post("/login", data={"email": "bob@example.com", "password": PASSWORD})
 
-    response = signed_in.get(f"/orders/{reference}")
+    response = signed_in.get(f"/account/orders/{reference}")
 
     # 404, never 403: a 403 would confirm the order exists.
     assert response.status_code == 404
@@ -601,9 +601,9 @@ def test_confirming_twice_places_one_order(signed_in, db, harissa):
     assert db["orders"].count_documents({}) == 1
     assert db["account_ledger"].count_documents({}) == 1
     reference = db["orders"].find_one({})["reference"]
-    assert first.headers["Location"] == f"/orders/{reference}"
+    assert first.headers["Location"] == f"/account/orders/{reference}"
     # Sent to the order that exists, not told the cart is empty.
-    assert second.headers["Location"] == f"/orders/{reference}"
+    assert second.headers["Location"] == f"/account/orders/{reference}"
 
 
 def test_a_cart_that_changed_while_the_page_was_open_is_not_confirmed(

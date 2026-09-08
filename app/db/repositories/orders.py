@@ -83,6 +83,56 @@ def system_highest_reference(prefix: str) -> str | None:
     return document["reference"] if document else None
 
 
+def apply_transition(
+    user_id: str,
+    order: Order,
+    *,
+    expected_status: OrderStatus,
+) -> bool:
+    """Write a transition back to one order. True when it was applied.
+
+    The update the customer account area owes: `services/order_state.py`
+    decides what a transition may be and returns the new `Order`; this
+    writes it, and nothing else. Only the fields a transition touches are
+    set, so a concurrent write to an untouched field is not clobbered by
+    a whole-document replace.
+
+    `expected_status` is part of the filter, not an assertion made
+    beforehand. A cancel confirmed twice, or a customer cancelling while
+    the chef moves the same order on, would otherwise both read `placed`,
+    both decide the transition is allowed, and both write — appending two
+    status-history entries and, at the caller, two offsetting ledger
+    credits. The second update matches nothing and returns False, so the
+    caller knows it did not happen.
+    """
+    if order.id is None:
+        raise ValueError("cannot write a transition to an unsaved order")
+    if order.user_id != user_id:
+        raise ValueError("order.user_id does not match the scoping user_id")
+
+    object_id = to_object_id(order.id)
+    if object_id is None:
+        return False
+
+    document = order.to_mongo()
+    update = {
+        field: document[field]
+        for field in ("status", "status_history", "updated_at", "prepared_at")
+    }
+    if order.chef_note is not None:
+        update["chef_note"] = document["chef_note"]
+
+    result = get_db()[COLLECTION].update_one(
+        {
+            "_id": object_id,
+            "user_id": user_id,
+            "status": expected_status.value,
+        },
+        {"$set": update},
+    )
+    return result.matched_count == 1
+
+
 # --- system and chef scope: deliberately not user-scoped --------------------
 
 

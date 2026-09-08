@@ -19,7 +19,6 @@ import secrets
 from datetime import timedelta
 
 from flask import (
-    abort,
     current_app,
     flash,
     redirect,
@@ -31,7 +30,6 @@ from flask import (
 from flask_login import current_user
 
 from app.blueprints.order import bp
-from app.db.repositories import orders as orders_repo
 from app.models.base import utcnow
 from app.models.orders import Fulfilment
 from app.security.decorators import login_required, public_route
@@ -136,12 +134,12 @@ def remove_from_cart():
 # --- checkout ---------------------------------------------------------------
 
 
-#: The confirmation form's single-use token, and the reference of the
-#: order it produced. Both live in the session because that is where this
-#: flow already keeps state; 01-DOMAIN.md names six collections and a
-#: pending checkout is not one of them.
-CHECKOUT_TOKEN_KEY = "checkout_token"
-LAST_ORDER_KEY = "last_order_reference"
+#: Named by the checkout service, which is also what clears them at
+#: sign-out. Both live in the session because that is where this flow
+#: already keeps state; 01-DOMAIN.md names six collections and a pending
+#: checkout is not one of them.
+CHECKOUT_TOKEN_KEY = checkout_service.CHECKOUT_TOKEN_KEY
+LAST_ORDER_KEY = checkout_service.LAST_ORDER_KEY
 
 
 def _checkout_token() -> str:
@@ -243,7 +241,7 @@ def place_order():
         # see, not a second one.
         reference = session[LAST_ORDER_KEY]
         flash(f"Order {reference} is already placed.", "success")
-        return redirect(url_for("order.order_detail", reference=reference))
+        return redirect(url_for("account.order_detail", reference=reference))
 
     if _cart_is_not_ready(view):
         flash(
@@ -316,19 +314,25 @@ def place_order():
     session.pop(CHECKOUT_TOKEN_KEY, None)
     session[LAST_ORDER_KEY] = order.reference
     flash(f"Order {order.reference} placed.", "success")
-    return redirect(url_for("order.order_detail", reference=order.reference))
+    return redirect(url_for("account.order_detail", reference=order.reference))
 
 
 @bp.get("/orders/<reference>")
 @login_required
-def order_detail(reference: str) -> str:
-    """One placed order, as the customer was shown it.
+def order_detail(reference: str):
+    """The order this checkout produced, at its home in the account area.
 
-    Scoped by `user_id` in the repository, and a miss is 404 rather than
-    403: a 403 would confirm that somebody else's order exists
-    (02-ARCHITECTURE.md).
+    One order, one URL. 04-WORKFLOWS.md puts order history and order
+    detail under `/account/orders`, and two pages rendering one order
+    would drift the moment either gained a control the other lacked —
+    the cancel button being the immediate example.
+
+    This path is kept because it is what checkout redirected to before
+    the account area existed, so a link a customer already has still
+    lands on their order. It resolves nothing itself: the account route
+    does the lookup, and an order that is not this customer's is a 404
+    there, exactly as it was here.
     """
-    order = orders_repo.get_order_by_reference(current_user.get_id(), reference)
-    if order is None:
-        abort(404)
-    return render_template("order/order_detail.html", order=order)
+    return redirect(
+        url_for("account.order_detail", reference=reference), code=301
+    )

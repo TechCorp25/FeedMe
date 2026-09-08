@@ -20,13 +20,17 @@
     may appear under more than one menu.
   </p>
 
-  {{ catalogue_macros.catalogue_filters(browse, menu_url) }}
+  {{ catalogue_macros.catalogue_filters(browse, menu_url, unfiltered_url) }}
+
+  {% if defaults_applied %}
+    {{ catalogue_macros.default_filters_notice(browse, unfiltered_url) }}
+  {% endif %}
 
   {% if browse.is_empty %}
     <p class="notice" role="status">
       {% if browse.filters.is_active %}
         No {{ browse.meal_type.name | lower }} dishes match those filters.
-        <a href="{{ menu_url }}">Clear them</a>
+        <a href="{{ unfiltered_url }}">Clear them</a>
         to see the whole menu.
       {% else %}
         There are no {{ browse.meal_type.name | lower }} dishes at the moment.

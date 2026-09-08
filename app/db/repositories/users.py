@@ -75,6 +75,40 @@ def update_delivery_address(user_id: str, address: str | None) -> None:
     )
 
 
+def update_profile(
+    user_id: str,
+    *,
+    display_name: str,
+    phone: str | None,
+    delivery_address: str | None,
+    dietary_notes: str | None,
+    default_preference_filters: list[str],
+) -> None:
+    """Write the profile fields the customer owns.
+
+    Every field is named. A `**fields` passthrough would let a caller
+    reach `role`, `is_active` or `password_hash` through a form the
+    customer controls, and the account area is the one place where the
+    customer is the author of the write.
+    """
+    object_id = to_object_id(user_id)
+    if object_id is None:
+        return
+    get_db()[COLLECTION].update_one(
+        {"_id": object_id},
+        {
+            "$set": {
+                "display_name": display_name,
+                "phone": phone,
+                "delivery_address": delivery_address,
+                "dietary_notes": dietary_notes,
+                "default_preference_filters": default_preference_filters,
+                "updated_at": utcnow(),
+            }
+        },
+    )
+
+
 def update_password_hash(user_id: str, password_hash: str) -> None:
     """Store a re-derived hash after Argon2 asks for a rehash."""
     object_id = to_object_id(user_id)

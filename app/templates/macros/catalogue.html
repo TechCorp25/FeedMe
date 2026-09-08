@@ -63,10 +63,19 @@
   at all, because its meal type is the page — so the browse object names
   its facet, or names none, and this stays a layout.
 #}
-{% macro catalogue_filters(browse, action_url) %}
+{% macro catalogue_filters(browse, action_url, unfiltered_url) %}
   {% set facet = browse.select_facet %}
   <form class="filters" method="get" action="{{ action_url }}">
     <h2 class="filters__heading">Filter</h2>
+
+    {#
+      Says "this URL states its filters", including when it states none.
+      A GET form submitted with every box cleared sends nothing, which the
+      server cannot tell from a fresh arrival — and a fresh arrival is
+      where a signed-in customer's saved defaults are applied. Without this
+      field, clearing the filters would silently put them back.
+    #}
+    <input type="hidden" name="filtered" value="1">
 
     {% if facet and facet.choices %}
       <div class="filters__group">
@@ -140,10 +149,26 @@
     <div class="filters__actions">
       <button class="btn" type="submit">Apply filters</button>
       {% if browse.filters.is_active %}
-        <a class="btn btn--ghost" href="{{ action_url }}">
+        <a class="btn btn--ghost" href="{{ unfiltered_url }}">
           Clear filters
         </a>
       {% endif %}
     </div>
   </form>
+{% endmacro %}
+
+{#
+  Shown when a signed-in customer's saved preference filters narrowed a
+  page they arrived at without stating any. A shortened catalogue that
+  does not explain itself reads as the whole catalogue, which is the one
+  thing a filter must never be mistaken for.
+#}
+{% macro default_filters_notice(browse, unfiltered_url) %}
+  <p class="notice" role="status">
+    Filtered by the preferences saved on
+    <a href="{{ url_for('account.profile') }}">your details</a>:
+    {{ browse.preference_choices | selectattr('selected') | map(attribute='label') | join(', ') }}.
+    <a href="{{ unfiltered_url }}">Show everything</a>.
+    These are taste and dietary preferences, not allergen information.
+  </p>
 {% endmacro %}

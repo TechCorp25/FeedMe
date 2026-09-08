@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from flask import request
+from flask_login import current_user
 
 from app.blueprints.api import bp
-from app.security.decorators import public_route
+from app.security.decorators import login_required, public_route
 from app.security.tokens import issue_access_token
+from app.services import account as account_service
 from app.services import accounts
 from app.services import cart as cart_service
 
@@ -113,3 +115,32 @@ def mutate_cart() -> tuple[dict, int]:
 
     cart_service.save_cart(cart)
     return _cart_payload(), 200
+
+
+@bp.get("/orders/<reference>/status")
+@login_required
+def order_status(reference: str) -> tuple[dict, int]:
+    """One of the customer's own orders, as a status the page can poll.
+
+    The second of the two JSON surfaces 00-SYSTEM.md allows, and it is an
+    enhancement: `/account/orders` renders every status server-side on
+    first request, so a customer without JavaScript sees the same thing
+    one refresh later.
+
+    Scoped by `user_id` in the repository like every other read of an
+    order, and a reference that is not this customer's is 404 — the same
+    answer the HTML page gives, for the same reason.
+    """
+    order = account_service.get_order(current_user.get_id(), reference)
+    if order is None:
+        return {"error": "not_found"}, 404
+    return {
+        "reference": order.reference,
+        "status": order.status.value,
+        "status_label": order.status.value.capitalize(),
+        # What the poller needs to know to stop asking. A terminal order
+        # never changes again, so a page that keeps polling one is asking
+        # a question that is already answered.
+        "is_terminal": order.is_terminal,
+        "can_cancel": account_service.can_customer_cancel(order),
+    }, 200

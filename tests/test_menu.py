@@ -182,7 +182,7 @@ def test_a_filter_that_empties_a_menu_says_so_and_offers_the_way_back(
 
     assert "Shakshuka" not in html
     assert "No breakfast dishes match those filters." in html
-    assert 'href="/menu/breakfast"' in html
+    assert 'href="/menu/breakfast?filtered=1"' in html
 
 
 def test_the_menu_carries_a_breadcrumb_back_to_the_dish_catalogue(client, seeded):

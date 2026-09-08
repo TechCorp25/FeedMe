@@ -1,0 +1,54 @@
+{#
+  The account's own navigation. Four pages, named by 04-WORKFLOWS.md, and
+  the current one is marked by weight and an underline rather than by
+  colour alone — the same rule the allergen chips keep.
+#}
+
+{% macro account_nav(current) %}
+  <nav class="account-nav" aria-label="Your account">
+    {% set pages = [
+      ('account.profile', 'Details'),
+      ('account.orders', 'Orders'),
+      ('account.balance', 'Balance'),
+    ] %}
+    {% for endpoint, label in pages %}
+      <a
+        class="account-nav__link {{ 'account-nav__link--current' if endpoint == current else '' }}"
+        href="{{ url_for(endpoint) }}"
+        {% if endpoint == current %}aria-current="page"{% endif %}
+      >{{ label }}</a>
+    {% endfor %}
+  </nav>
+{% endmacro %}
+
+{#
+  One order, summarised for the history list. `data-order-status` is the
+  hook `order-status.js` polls; the status is already rendered here, so
+  the page is complete without it.
+#}
+{% macro order_summary(order) %}
+  <li class="order-summary" data-order-status="{{ order.reference }}">
+    <div>
+      <h2 class="order-summary__reference">
+        <a href="{{ url_for('account.order_detail', reference=order.reference) }}">
+          {{ order.reference }}
+        </a>
+      </h2>
+      <p class="order-summary__meta">
+        Placed {{ order.created_at.day }} {{ order.created_at.strftime('%B %Y') }}
+        {%- if order.requested_for %},
+          for {{ order.requested_for.day }}
+          {{ order.requested_for.strftime('%B %Y') }}
+        {%- endif %} —
+        {{ order.fulfilment.value }},
+        {{ order.lines | length }} item{{ '' if order.lines | length == 1 else 's' }}
+      </p>
+    </div>
+    <p class="order-summary__amount">{{ order.total_cents | price }}</p>
+    <p>
+      <span class="status-stamp" data-order-status-label>
+        {{ order.status.value | capitalize }}
+      </span>
+    </p>
+  </li>
+{% endmacro %}

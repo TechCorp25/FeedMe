@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% import "macros/account.html" as account_macros %}
+
+{% block title %}Your balance — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block content %}
+  {{ account_macros.account_nav('account.balance') }}
+
+  <h1 class="page__title">Your balance</h1>
+  <p class="page__lede">
+    Every order charges this account and every cancellation credits it back.
+    No payment is taken through this site; the balance is settled with the
+    chef directly.
+  </p>
+
+  {% if view.is_empty %}
+    <p class="notice">Nothing has been charged to your account yet.</p>
+  {% else %}
+    <div class="ledger-scroll">
+      <table class="ledger">
+        <caption>
+          Oldest first. Entries are never edited — a correction is a new
+          entry that offsets the one before it.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Entry</th>
+            <th scope="col">Description</th>
+            <th class="ledger__amount" scope="col">Amount</th>
+            <th class="ledger__running" scope="col">Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in view.rows %}
+            <tr>
+              <td>
+                {{ row.entry.created_at.day }}
+                {{ row.entry.created_at.strftime('%B %Y') }}
+              </td>
+              {#
+                The kind of entry is a word in its own column, never a
+                colour on the amount: a credit has to be tellable from a
+                charge in monochrome and on a printed page.
+              #}
+              <td>{{ row.entry.entry_type.value | capitalize }}</td>
+              <td>{{ row.entry.description }}</td>
+              <td class="ledger__amount">{{ row.entry.amount_cents | price }}</td>
+              <td class="ledger__running">{{ row.balance_cents | price }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <dl class="balance-total">
+      <dt>Balance owing</dt>
+      <dd>{{ view.balance_cents | price }}</dd>
+    </dl>
+    <p class="page__note">
+      Summed across every entry on your account, which may be more than the
+      page above shows.
+    </p>
+  {% endif %}
+{% endblock %}

@@ -123,6 +123,53 @@ Rules:
 
 All routes scoped by `user_id` at the repository. Requesting another customer's order returns 404, never 403.
 
+*Decided by the account slice:*
+
+- **One order, one page.** `/orders/<reference>`, which checkout redirected
+  to before this area existed, is a permanent redirect to
+  `/account/orders/<reference>`. Two pages rendering one order drift the
+  moment either gains a control the other lacks, and the cancel button is
+  that control.
+- **Cancellation is a compare-and-set.** `order_state.py` decides the
+  transition and `orders.apply_transition` writes it filtered on the status
+  it was decided against, so a confirmation clicked twice — or a chef
+  moving the same order on at that moment — cancels once and credits once.
+  The transition is written first and the offsetting `credit` second: a
+  credit written first would stand alone if the transition then lost its
+  race, crediting a customer for an order still being prepared. The
+  remaining failure is a cancellation whose credit is missing, which is
+  detectable by `order_id`, repairable by appending the entry, and logged
+  at ERROR — the mirror of the one checkout carries.
+- **Live status is an enhancement.** `GET /api/orders/<reference>/status` is
+  the second of the two JSON surfaces 00-SYSTEM.md allows. Every status is
+  rendered server-side on first request, and the poller stops asking about
+  an order that has reached a terminal status.
+- **Saved preference filters need a marker.** `default_preference_filters`
+  pre-applies to a browse page arrived at with nothing stated. A GET form
+  submitted with every box cleared sends no `preference` at all, which the
+  server cannot tell from a fresh arrival, so the filter form carries a
+  hidden `filtered=1` and every "clear" link sets it: a URL that states its
+  filters is taken literally. A page narrowed by the defaults says so and
+  offers the unfiltered catalogue, because a shortened list that does not
+  explain itself reads as the whole catalogue.
+- **Sign-out empties the session, not just the login.** `logout_user` ends
+  the login; a message flashed but never rendered, and the open checkout's
+  `last_order_reference`, both survived it and reached whoever signed in
+  next on that browser. Both are cleared at sign-out now.
+
+*Deferred, and owned by 01-DOMAIN.md:* **the use-by date.** This document
+computes it as `prepared_at + shelf_life_days` per line, shortest across
+lines. `OrderLine` snapshots the name, the unit price and the allergen
+block, and not the `StorageBlock` — so the shelf life is only readable from
+the catalogue as it stands now, which the chef may have edited since the
+order was prepared. A use-by that has been *lengthened* under a customer is
+the one direction this must never fail in, so the order page points at the
+item's current guidance rather than computing a date it cannot stand
+behind. Closing it means adding a storage snapshot to `OrderLine`, which is
+a change to the order document 01-DOMAIN.md owns. Decide the direction
+there: either the whole `StorageBlock` is snapshotted like the allergen
+block, or `shelf_life_days` alone is.
+
 ## Chef-admin flows
 
 Single `chef_admin` account. Full capability, no sub-roles.

@@ -6,12 +6,45 @@ enhances the tab strip; it never gates content (00-SYSTEM.md).
 
 from __future__ import annotations
 
-from flask import abort, current_app, render_template, request
+from flask import abort, current_app, render_template, request, url_for
+from flask_login import current_user
 
 from app.blueprints.public import bp
 from app.db.client import get_db
 from app.security.decorators import public_route
 from app.services import catalogue
+
+
+#: Present in the query string of any URL that states its own filters,
+#: including one that states none.
+#:
+#: 01-DOMAIN.md gives a customer `default_preference_filters` to
+#: "pre-apply browse filters", and a GET form submitted with every
+#: checkbox cleared sends no `preference` at all — indistinguishable, on
+#: the wire, from arriving at the page fresh. Without a marker, clearing
+#: the filters would silently re-apply the defaults and the control would
+#: appear broken. The filter form carries this hidden field and every
+#: "clear" link sets it, so a stated selection is always taken literally.
+FILTERS_STATED = "filtered"
+
+
+def _preference_selection() -> tuple[list[str], bool]:
+    """The preference flags to apply, and whether they are the defaults.
+
+    Defaults apply only to an arrival that states nothing: no preference
+    values, and no marker saying the filters were chosen. They are the
+    customer's own, they only ever narrow, and the page says so and
+    offers the unfiltered catalogue — a shortened list that does not
+    explain itself would read as the whole catalogue.
+    """
+    stated = request.args.getlist("preference")
+    if stated or request.args.get(FILTERS_STATED):
+        return stated, False
+    if not current_user.is_authenticated:
+        return [], False
+    defaults = list(getattr(current_user, "default_preference_filters", []))
+    return defaults, bool(defaults)
+
 
 
 @bp.get("/")
@@ -28,12 +61,18 @@ def components() -> str:
     Filters arrive as a plain GET form, so the page works with JavaScript
     disabled and every filtered view is a linkable URL.
     """
+    preferences, defaults_applied = _preference_selection()
     browse = catalogue.browse_components(
         category=request.args.get("category"),
-        preference_flags=request.args.getlist("preference"),
+        preference_flags=preferences,
         exclude_allergens=request.args.getlist("exclude"),
     )
-    return render_template("catalogue/components.html", browse=browse)
+    return render_template(
+        "catalogue/components.html",
+        browse=browse,
+        defaults_applied=defaults_applied,
+        unfiltered_url=url_for("public.components", **{FILTERS_STATED: 1}),
+    )
 
 
 @bp.get("/components/<slug>")
@@ -55,15 +94,18 @@ def dishes() -> str:
     disabled and every filtered view is a linkable URL. Meal type travels
     as a slug for the same reason.
     """
+    preferences, defaults_applied = _preference_selection()
     browse = catalogue.browse_dishes(
         meal_type=request.args.get("meal_type"),
-        preference_flags=request.args.getlist("preference"),
+        preference_flags=preferences,
         exclude_allergens=request.args.getlist("exclude"),
     )
     return render_template(
         "catalogue/dishes.html",
         browse=browse,
         menu_meal_types=catalogue.list_menu_meal_types(),
+        defaults_applied=defaults_applied,
+        unfiltered_url=url_for("public.dishes", **{FILTERS_STATED: 1}),
     )
 
 
@@ -93,14 +135,22 @@ def menu(meal_type_slug: str) -> str:
     apply, and serving the whole catalogue under a heading the customer
     did not ask for would be worse than saying so.
     """
+    preferences, defaults_applied = _preference_selection()
     browse = catalogue.browse_menu(
         meal_type_slug,
-        preference_flags=request.args.getlist("preference"),
+        preference_flags=preferences,
         exclude_allergens=request.args.getlist("exclude"),
     )
     if browse is None:
         abort(404)
-    return render_template("catalogue/menu.html", browse=browse)
+    return render_template(
+        "catalogue/menu.html",
+        browse=browse,
+        defaults_applied=defaults_applied,
+        unfiltered_url=url_for(
+            "public.menu", meal_type_slug=meal_type_slug, **{FILTERS_STATED: 1}
+        ),
+    )
 
 
 @bp.get("/health")

@@ -13,7 +13,7 @@ import pytest
 
 from app.db.repositories import ledger as ledger_repo
 from app.db.repositories import orders as orders_repo
-from app.models.orders import LedgerEntry, LedgerEntryType, Order
+from app.models.orders import LedgerEntry, LedgerEntryType, Order, OrderStatus
 
 USER_A = "aaaaaaaaaaaaaaaaaaaaaaaa"
 USER_B = "bbbbbbbbbbbbbbbbbbbbbbbb"
@@ -111,6 +111,56 @@ def test_listing_never_leaks_another_customers_orders(app, seeded_order):
             "MP-2609-0001"
         ]
         assert orders_repo.list_orders(USER_B) == []
+
+
+def test_a_transition_cannot_be_written_to_another_customers_order(
+    app, seeded_order
+):
+    """The write is scoped like every read, and it says it did nothing.
+
+    A view that filtered by `user_id` itself would still be wrong here:
+    the update has to *not match*, so a caller cannot cancel somebody
+    else's order by handing this function their order.
+    """
+    cancelled = seeded_order.model_copy(
+        update={"status": OrderStatus.CANCELLED, "status_history": []}
+    )
+
+    with app.app_context():
+        assert (
+            orders_repo.apply_transition(
+                USER_B,
+                cancelled.model_copy(update={"user_id": USER_B}),
+                expected_status=OrderStatus.PLACED,
+            )
+            is False
+        )
+        assert orders_repo.get_order(USER_A, seeded_order.id).status is (
+            OrderStatus.PLACED
+        )
+
+
+def test_a_transition_only_applies_from_the_status_it_was_decided_against(
+    app, seeded_order
+):
+    """The compare-and-set that stops a double cancellation."""
+    cancelled = seeded_order.model_copy(update={"status": OrderStatus.CANCELLED})
+
+    with app.app_context():
+        assert (
+            orders_repo.apply_transition(
+                USER_A, cancelled, expected_status=OrderStatus.PLACED
+            )
+            is True
+        )
+        # The order is no longer `placed`, so the same write applies again
+        # to nothing.
+        assert (
+            orders_repo.apply_transition(
+                USER_A, cancelled, expected_status=OrderStatus.PLACED
+            )
+            is False
+        )
 
 
 def test_malformed_id_reads_as_not_found(app, db):
