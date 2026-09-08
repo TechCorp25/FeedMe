@@ -22,6 +22,16 @@ Dishes grouped by `meal_type_ids` — breakfast, lunch, dinner, snack. Same card
 - JS updates the cart via `POST /api/cart` and re-renders the cart badge. Non-JS falls back to a form POST that redirects back to the referring page with the anchor preserved.
 - Cart never silently drops an item. If an item becomes unavailable or archived, the cart shows it struck through with an explicit message; checkout is blocked until the customer removes it.
 
+*Decided by the cart and auth slices:* the cart lives in the signed session
+cookie and carries the `user_id` it belongs to. 01-DOMAIN.md names six
+collections and a cart is not one of them, so "keyed to `user_id`" is a stamp
+on the stored cart rather than a seventh collection: a cart stamped for
+somebody else is never read, sign-out clears it, and the merge on login folds
+the guest cart into the customer's. What that costs is a cart that does not
+follow a customer to another device, which is the price of not inventing a
+collection the domain does not have. A line that will not fit the merge is
+reported to the customer, never dropped.
+
 ## Checkout
 
 1. Review lines, quantities, subtotal.
@@ -39,6 +49,21 @@ On confirm, atomically:
 - Clear the cart.
 
 No payment is taken. No provider is contacted. Do not add one.
+
+*Decided by the checkout slice:* "atomically" is honoured where it can be. The
+order is one document and its insert is one atomic write, so an order never
+exists half-priced or half-snapshotted. The ledger entry is a second document
+in a second collection, and a two-collection transaction needs a replica set —
+which a workstation, a single-node deployment and the test suite's mongomock
+do not have. The order is therefore written first and the entry second,
+carrying `order_id`: the remaining failure is a charge missing from a ledger,
+which is detectable, repairable by appending the entry, and never a customer
+charged for an order that does not exist. It is logged at ERROR.
+
+*Also decided here:* `fulfilment = "delivery"` needs an address, and 01-DOMAIN.md
+keeps the address on the customer rather than on the order. What the customer
+types at checkout is therefore saved to `users.delivery_address` and the chef
+reads the current one; an order carries no address of its own.
 
 ## Order state machine
 

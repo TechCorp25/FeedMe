@@ -694,6 +694,89 @@
     @apply border-stamp text-stamp;
   }
 
+  /* --- forms: sign-in, registration, checkout ------------------------ */
+
+  .form {
+    @apply mt-8 flex max-w-prose flex-col gap-6 border-2 border-ink bg-surface
+           p-4 sm:p-6;
+  }
+
+  .form__field {
+    @apply flex flex-col gap-2;
+  }
+
+  .form__label {
+    @apply font-display text-xs uppercase tracking-widest text-ink-muted;
+  }
+
+  .form__input {
+    @apply min-h-touch w-full border-2 border-ink bg-ground px-3 py-2
+           font-serif text-base text-ink
+           focus-visible:outline focus-visible:outline-2
+           focus-visible:outline-offset-2 focus-visible:outline-accent;
+  }
+
+  /* A date is a date wide, not a column wide. */
+  .form__input--short {
+    @apply max-w-xs;
+  }
+
+  .form__hint {
+    @apply max-w-prose font-serif text-sm text-ink-muted;
+  }
+
+  .form__fieldset {
+    @apply m-0 flex flex-col gap-2 border-0 p-0;
+  }
+
+  /* The whole row is the target, not just the radio (03-FRONTEND.md). */
+  .form__choice {
+    @apply flex min-h-touch items-center gap-2 font-serif text-base text-ink;
+  }
+
+  .form__choice input {
+    @apply min-h-touch w-5 cursor-pointer self-stretch accent-accent;
+  }
+
+  .form__choice label {
+    @apply flex min-h-touch cursor-pointer items-center self-stretch;
+  }
+
+  .form__actions {
+    @apply flex flex-wrap items-center gap-3;
+  }
+
+  .site-nav__form {
+    @apply m-0 flex shrink-0 items-center;
+  }
+
+  /* --- a placed order ------------------------------------------------- */
+
+  /* Stamped, and never colour alone: the word is the status. */
+  .status-stamp {
+    @apply inline-flex items-center border-2 border-ink px-2 py-1 font-display
+           text-xs uppercase tracking-widest text-ink;
+  }
+
+  .order-lines {
+    @apply mt-6 flex list-none flex-col gap-0 border-t-2 border-ink p-0;
+  }
+
+  .order-line {
+    @apply flex flex-col gap-3 border-b-2 border-ink py-4;
+  }
+
+  .order-line__head {
+    @apply flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between
+           sm:gap-6;
+  }
+
+  /* The snapshot, set apart from the line it belongs to so a declaration
+     is never mistaken for a price. */
+  .order-line__allergens {
+    @apply flex flex-col gap-2 border-l-2 border-line pl-4;
+  }
+
   .site-footer {
     @apply mx-auto max-w-screen border-t border-line px-4 pb-8 pt-6 font-serif
            text-sm text-ink-muted;

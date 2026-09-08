@@ -93,21 +93,27 @@
 
     <p class="mt-8 flex flex-wrap items-center gap-3">
       {#
-        Checkout is the next slice. The control is named and disabled
-        rather than absent, so what happens next is visible — and it stays
-        disabled while a withdrawn line is in the cart, which is the rule
-        it will keep once it does something.
+        Disabled only while a withdrawn line is in the cart. That is the
+        rule the control keeps: checkout is blocked until the customer has
+        removed what can no longer be made (04-WORKFLOWS.md).
       #}
-      <button class="btn" type="button" disabled aria-disabled="true">
-        Checkout
-      </button>
-      <span class="cart-summary__pending">
-        {% if view.is_blocked %}
-          Remove the unavailable item{{ '' if view.unavailable | length == 1 else 's' }} above first.
-        {% else %}
-          Checkout is not built yet.
+      {% if view.is_blocked %}
+        <button class="btn" type="button" disabled aria-disabled="true">
+          Checkout
+        </button>
+        <span class="cart-summary__pending">
+          Remove the unavailable item{{ '' if view.unavailable | length == 1 else 's' }}
+          above first.
+        </span>
+      {% else %}
+        <a class="btn" href="{{ url_for('order.checkout') }}">Checkout</a>
+        {% if not current_user.is_authenticated %}
+          <span class="cart-summary__pending">
+            You will sign in or create an account first — your cart comes
+            with you.
+          </span>
         {% endif %}
-      </span>
+      {% endif %}
     </p>
   {% endif %}
 {% endblock %}

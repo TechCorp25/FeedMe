@@ -18,15 +18,21 @@ from app.models.orders import LedgerEntry, LedgerEntryType, Order
 USER_A = "aaaaaaaaaaaaaaaaaaaaaaaa"
 USER_B = "bbbbbbbbbbbbbbbbbbbbbbbb"
 
-#: Customer-facing repository functions. `chef_*` names are the explicit,
-#: separately named tenancy bypass and are excluded by construction.
+#: Customer-facing repository functions. `chef_*` and `system_*` names are
+#: the explicit, separately named scopes outside the customer contract and
+#: are excluded by construction: `chef_*` reads a customer's data as
+#: somebody who is not that customer, `system_*` reads across every
+#: customer and returns no customer data at all. Both are visible as such
+#: at the call site, which is the point of naming them.
 CUSTOMER_SCOPED_MODULES = (orders_repo, ledger_repo)
+
+SCOPE_PREFIXES = ("chef_", "system_")
 
 
 def _customer_scoped_functions():
     for module in CUSTOMER_SCOPED_MODULES:
         for name, function in vars(module).items():
-            if name.startswith("_") or name.startswith("chef_"):
+            if name.startswith("_") or name.startswith(SCOPE_PREFIXES):
                 continue
             if inspect.isfunction(function) and function.__module__ == module.__name__:
                 yield module.__name__, name, function
@@ -45,6 +51,30 @@ def test_customer_repository_functions_take_user_id_first():
         assert first.default is inspect.Parameter.empty, (
             f"{module_name}.{name} must not default user_id"
         )
+
+
+def test_the_reference_counter_returns_a_reference_and_nothing_else(app, db):
+    """The one cross-customer read, held to what it is allowed to return.
+
+    `system_highest_reference` exists so a new order can be numbered, and
+    it draws over every customer's orders. It is only defensible while it
+    hands back a reference string: a document would be one customer's
+    order handed to another.
+    """
+    with app.app_context():
+        orders_repo.create_order(
+            USER_A,
+            Order(
+                user_id=USER_A,
+                reference="MP-2609-0001",
+                subtotal_cents=0,
+                total_cents=0,
+            ),
+        )
+        highest = orders_repo.system_highest_reference("MP-2609-")
+
+    assert highest == "MP-2609-0001"
+    assert isinstance(highest, str)
 
 
 def test_no_repository_offers_an_all_users_flag():

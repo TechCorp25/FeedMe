@@ -278,7 +278,38 @@ def test_only_a_published_item_can_be_added(app, db):
         assert cart_service.find_orderable_item(ItemType.DISH, published) is None
 
 
-def test_the_guest_cart_merge_is_a_named_seam_not_a_guess():
-    """04-WORKFLOWS.md owes a merge on login. There is no login yet."""
-    with pytest.raises(NotImplementedError):
-        cart_service.merge_into_user_cart("u1", cart_service.Cart())
+def test_merging_adds_quantities_for_the_same_item():
+    """The merge on sign-in folds carts together; it does not replace one."""
+    base = cart_service.add_line(
+        cart_service.Cart(), ItemType.COMPONENT, "a" * 24, 2
+    )
+    incoming = cart_service.add_line(
+        cart_service.Cart(), ItemType.COMPONENT, "a" * 24, 3
+    )
+    incoming = cart_service.add_line(incoming, ItemType.DISH, "b" * 24, 1)
+
+    merged, overflowed = cart_service.merge_carts(base, incoming)
+
+    assert overflowed == []
+    assert merged.item_count == 6
+    assert [(line.item_type, line.quantity) for line in merged.lines] == [
+        (ItemType.COMPONENT, 5),
+        (ItemType.DISH, 1),
+    ]
+
+
+def test_a_line_that_does_not_fit_the_merge_is_returned_not_dropped():
+    """A cart never silently drops a line — sign-in included."""
+    base = cart_service.Cart()
+    for index in range(cart_service.MAX_LINES):
+        base = cart_service.add_line(
+            base, ItemType.COMPONENT, f"{index:024d}", 1
+        )
+    incoming = cart_service.add_line(
+        cart_service.Cart(), ItemType.DISH, "b" * 24, 1
+    )
+
+    merged, overflowed = cart_service.merge_carts(base, incoming)
+
+    assert len(merged.lines) == cart_service.MAX_LINES
+    assert [line.item_id for line in overflowed] == ["b" * 24]

@@ -6,7 +6,7 @@ repository layer. Models are the schema of record (02-ARCHITECTURE.md).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any
 
 from bson import ObjectId
@@ -16,6 +16,26 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 def utcnow() -> datetime:
     """Timezone-aware UTC now. Never use naive datetimes in this codebase."""
     return datetime.now(timezone.utc)
+
+
+def _encode_dates(value: Any) -> Any:
+    """Widen a plain `date` to UTC midnight on the way into MongoDB.
+
+    BSON has one temporal type and it is a datetime; a `date` is not
+    encodable and the driver raises on it. A field the domain calls a
+    date — `requested_for` — is therefore stored at midnight UTC and read
+    back as a date, because Pydantic narrows a midnight datetime to one.
+    Done here rather than at a call site so no repository can forget it.
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min, tzinfo=timezone.utc)
+    if isinstance(value, dict):
+        return {key: _encode_dates(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_encode_dates(item) for item in value]
+    return value
 
 
 class EmbeddedModel(BaseModel):
@@ -47,7 +67,9 @@ class MongoModel(EmbeddedModel):
 
     def to_mongo(self, *, exclude_id: bool = True) -> dict[str, Any]:
         """Serialise for insertion. Enum members become their values."""
-        data = self.model_dump(mode="python", by_alias=True, exclude_none=False)
+        data = _encode_dates(
+            self.model_dump(mode="python", by_alias=True, exclude_none=False)
+        )
         raw_id = data.pop("_id", None)
         if not exclude_id and raw_id is not None:
             data["_id"] = ObjectId(raw_id)

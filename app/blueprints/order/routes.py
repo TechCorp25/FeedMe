@@ -1,56 +1,46 @@
-"""Cart routes.
+"""Cart, checkout and one placed order.
 
 Every mutation is a form POST that redirects, so the cart works with
 JavaScript disabled (03-FRONTEND.md). `cart.js` posts the same intents to
 `POST /api/cart` instead and updates the badge in place; it is an
 enhancement over these routes, never a replacement for them.
 
-The cart is a guest surface: there is no login yet, and 04-WORKFLOWS.md
-has a guest cart merging into the user's on login rather than a login
-standing between a customer and their cart. So these are public routes.
+The cart itself is a public surface: 04-WORKFLOWS.md has a guest cart
+merging into the customer's on sign-in rather than a login standing
+between somebody and the food they are choosing. Checkout is where the
+account becomes necessary — an order belongs to a `user_id` — so that is
+the first route on this blueprint that requires one, and an unauthenticated
+customer is sent to sign in and brought straight back.
 """
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit
+from datetime import timedelta
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
+from flask_login import current_user
 
 from app.blueprints.order import bp
-from app.security.decorators import public_route
+from app.db.repositories import orders as orders_repo
+from app.models.base import utcnow
+from app.models.orders import Fulfilment
+from app.security.decorators import login_required, public_route
+from app.security.redirects import safe_path
 from app.services import cart as cart_service
-
-
-def _safe_return_to(raw: str | None) -> str | None:
-    """A same-site path from the form, or None.
-
-    The value decides where the customer is sent next, so it is treated
-    as untrusted: only a path on this site is honoured, and anything
-    carrying a scheme, a host or a backslash is discarded. Without this
-    the field is an open redirect with a friendly name.
-
-    The fragment travels in this hidden field rather than being read back
-    from `Referer`, because a fragment never reaches the server: it is
-    the only way the customer lands back at the control they used.
-    """
-    if not raw:
-        return None
-    candidate = raw.strip()
-    if not candidate.startswith("/") or candidate.startswith("//"):
-        return None
-    if "\\" in candidate or any(character in candidate for character in "\r\n\t"):
-        return None
-    parts = urlsplit(candidate)
-    if parts.scheme or parts.netloc:
-        return None
-    return candidate
+from app.services import checkout as checkout_service
 
 
 def _back(default_endpoint: str = "order.cart"):
-    """Redirect to the page the form came from, else to the cart."""
-    return redirect(_safe_return_to(request.form.get("return_to")) or url_for(
-        default_endpoint
-    ))
+    """Redirect to the page the form came from, else to the cart.
+
+    `return_to` is untrusted and is filtered by `safe_path`; the fragment
+    travels in that hidden field rather than being read back from
+    `Referer`, because a fragment never reaches the server and it is the
+    only way the customer lands back at the control they used.
+    """
+    return redirect(
+        safe_path(request.form.get("return_to")) or url_for(default_endpoint)
+    )
 
 
 @bp.get("/cart")
@@ -131,3 +121,85 @@ def remove_from_cart():
         cart_service.remove_line(cart_service.load_cart(), item_type, item_id)
     )
     return _back()
+
+
+# --- checkout ---------------------------------------------------------------
+
+
+def _checkout_context(view, form=None) -> dict:
+    """Everything the checkout form renders from, prefilled or re-filled."""
+    today = utcnow().date()
+    submitted = form or {}
+    return {
+        "view": view,
+        "today": today.isoformat(),
+        "latest": (
+            today + timedelta(days=checkout_service.MAX_LEAD_DAYS)
+        ).isoformat(),
+        "fulfilments": list(Fulfilment),
+        "requested_for": submitted.get("requested_for", ""),
+        "fulfilment": submitted.get("fulfilment", Fulfilment.COLLECTION.value),
+        "customer_note": submitted.get("customer_note", ""),
+        "delivery_address": submitted.get(
+            "delivery_address", current_user.delivery_address or ""
+        ),
+        "note_limit": checkout_service.MAX_NOTE_LENGTH,
+    }
+
+
+@bp.get("/checkout")
+@login_required
+def checkout():
+    """Review the order, choose a date and how it is collected."""
+    view = cart_service.resolve_cart()
+    if view.is_empty:
+        flash("Your cart is empty.", "error")
+        return redirect(url_for("order.cart"))
+    return render_template("order/checkout.html", **_checkout_context(view))
+
+
+@bp.post("/checkout")
+@login_required
+def place_order():
+    """Confirm. Prices and allergen declarations are frozen at this point.
+
+    The cart is resolved once, here, and that same resolution is what is
+    snapshotted: re-reading the catalogue between the check and the write
+    would let an item change underneath the order.
+    """
+    view = cart_service.resolve_cart()
+    try:
+        checkout_request = checkout_service.parse_checkout_form(
+            request.form, user=current_user, today=utcnow().date()
+        )
+        order = checkout_service.place_order(current_user, view, checkout_request)
+    except checkout_service.CheckoutError as error:
+        flash(str(error), "error")
+        if view.is_empty or view.is_blocked:
+            return redirect(url_for("order.cart"))
+        return (
+            render_template(
+                "order/checkout.html", **_checkout_context(view, request.form)
+            ),
+            400,
+        )
+
+    # Only now: the order is written, so the cart has done its job.
+    cart_service.clear_cart()
+    flash(f"Order {order.reference} placed.", "success")
+    return redirect(url_for("order.order_detail", reference=order.reference))
+
+
+@bp.get("/orders/<reference>")
+@login_required
+def order_detail(reference: str) -> str:
+    """One placed order, as the customer was shown it.
+
+    Scoped by `user_id` in the repository, and a miss is 404 rather than
+    403: a 403 would confirm that somebody else's order exists
+    (02-ARCHITECTURE.md).
+    """
+    order = orders_repo.get_order_by_reference(current_user.get_id(), reference)
+    if order is None:
+        abort(404)
+    return render_template("order/order_detail.html", order=order)

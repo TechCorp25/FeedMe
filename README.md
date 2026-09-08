@@ -118,6 +118,9 @@ python -m pytest
 Tests run against `mongomock`, never a live database. Coverage centres on
 the areas the specification names: allergen validators, tenancy
 isolation, order state transitions, and integer-cent price arithmetic.
+`tests/test_checkout.py` adds the two the checkout slice owes: a placed
+order that a later catalogue edit cannot reach, and one customer asking for
+another's order and getting 404 rather than 403.
 
 ```bash
 python scripts/check_boot.py
@@ -151,7 +154,8 @@ merge, and the checks report rather than enforce.
 
 The application skeleton, the Pydantic schema of record, the repository
 layer with its tenancy contract, the order state machine, the public
-catalogue and its three ordering entry points, and the cart they feed:
+catalogue and its three ordering entry points, the cart they feed, and the
+accounts and checkout that turn a cart into an order:
 
 | Route | |
 |---|---|
@@ -165,6 +169,11 @@ catalogue and its three ordering entry points, and the cart they feed:
 | `GET /cart` | the cart, resolved against the catalogue as it stands now |
 | `POST /cart/add`, `/cart/update`, `/cart/remove` | cart mutation as plain form posts |
 | `POST /api/cart` | the same three intents as JSON, for `cart.js` |
+| `GET`/`POST /register` | create a customer account, signed straight in |
+| `GET`/`POST /login` | sign in, and continue to wherever you were going |
+| `POST /logout` | sign out, and take the cart with it |
+| `GET`/`POST /checkout` | review, choose a date and fulfilment, confirm |
+| `GET /orders/<reference>` | one placed order, as it was shown when placed |
 
 All three browse surfaces offer the **allergen exclusion filter**. It hides an
 item that *declares* an allergen, and marks rather than hides an item that
@@ -178,22 +187,61 @@ six collections and none of them is a cart, so there is no seventh; the cookie
 holds item ids and quantities only, and every price shown is read from the
 catalogue on the server, so a tampered cookie cannot change one. A line whose
 item has since been withdrawn is never dropped — it renders struck through and
-blocks checkout until the customer removes it. `04-WORKFLOWS.md` also owes a
-guest-cart merge on login; `cart.merge_into_user_cart` is the named seam for
-it and deliberately raises, because there is no login yet and a user-keyed
-cart has nowhere to live until the auth slice decides where.
+blocks checkout until the customer removes it. `cart.merge_into_user_cart` is
+the guest-cart merge `04-WORKFLOWS.md` asks for, and it now runs at sign-in.
 
 The add control sits on the item page rather than on a catalogue card. A card
 carries no allergen declaration and points at the page that does, so ordering
 from the page that shows what is in an item is the order this service
 encourages — at the cost of one click the customer was going to make anyway.
 
-Next slice: **checkout.** `04-WORKFLOWS.md` fixes what it does atomically —
-snapshot name, price and the full allergen block onto every line, compute the
-totals in integer cents, generate the `MP-YYMM-NNNN` reference, write the
-ledger charge and clear the cart. The `Checkout` button on the cart page is
-present and disabled so that seam is visible rather than absent.
+**Accounts** are sessions, not tokens: Flask-Login over a signed cookie,
+Argon2id password hashing, and one message for every sign-in failure so the
+form cannot be used to find out which addresses are registered. Length is the
+whole password rule — composition rules buy nothing against a hash nobody can
+read. There is deliberately no password reset: a reset is delivered by email,
+`04-WORKFLOWS.md` keeps notifications out of v1 entirely, and a reset form
+with nothing to send would be a control that appears to work and does not. The
+sign-in page says so, and the chef resets a password out of band.
 
-Not built: checkout, authentication and the customer account area, and every
-chef-admin screen — the catalogue editors, the allergen editor, the order
-queue, the prep sheet and the ledger.
+The cart is now stamped with the customer it belongs to. `01-DOMAIN.md` names
+six collections and none of them is a cart, so "keyed to `user_id`" is an
+owner on the stored cart rather than a seventh collection: signing out clears
+it, a cart stamped for somebody else is never read, and signing in folds the
+guest cart into the customer's — with any line that will not fit reported
+rather than dropped, which is the same rule the cart keeps everywhere else.
+
+**Checkout** is where the catalogue stops being live. Confirming snapshots the
+name, the unit price and the *whole* allergen block onto every line, totals in
+integer minor units, draws the next `MP-YYMM-NNNN` reference for the month,
+writes the order at `placed` / `unpaid`, appends the `charge` to the ledger and
+clears the cart. A later catalogue edit cannot reach a placed order, and
+`tests/test_checkout.py` holds it to that by editing the item afterwards.
+
+"Atomically" is honoured where a single-node MongoDB allows it: the order is
+one document and one atomic write, and the ledger entry is a second write
+carrying `order_id`. A two-collection transaction needs a replica set, which a
+workstation, a single-node deploy and mongomock do not have — so the order is
+written first, and the failure that remains is a charge missing from a ledger,
+which is detectable, repairable and logged at ERROR. It is never a customer
+charged for an order that does not exist.
+
+Delivery needs an address, and `01-DOMAIN.md` puts the address on the customer
+rather than on the order. What is typed at checkout is saved to
+`users.delivery_address`, so an order carries no address of its own and the
+chef reads the current one.
+
+`scripts/check_boot.py` now prints the whole URL map with the marker each
+endpoint carries, and exits non-zero on an unmarked one. It was an empty file
+passing a CI gate in silence; the gate now has something behind it.
+
+Not built: the customer account area — profile, order history, the ledger view
+and customer cancellation — and every chef-admin screen: the catalogue
+editors, the allergen editor, the order queue, the prep sheet and the ledger.
+
+Next slice: **the customer account area.** `/account/orders` and
+`/account/orders/<reference>` are the natural home for the order list and for
+cancellation from `placed` or `confirmed`, which needs the one repository
+function checkout did not: an update that writes a transition back to an
+order. `services/order_state.py` already decides what that transition is
+allowed to be.
