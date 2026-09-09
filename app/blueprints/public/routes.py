@@ -27,23 +27,33 @@ from app.services import catalogue
 #: "clear" link sets it, so a stated selection is always taken literally.
 FILTERS_STATED = "filtered"
 
+#: Every query-string key that states a filter on some browse surface.
+#:
+#: The marker above covers the form, but not a URL written before the
+#: marker existed. `/components?exclude=milk` is somebody's bookmark, or
+#: a link they sent to a friend, and it states exactly what it wants;
+#: adding this customer's saved preferences on top would quietly return
+#: something else than the link says. Any of these keys, present at all,
+#: means the URL speaks for itself.
+CATALOGUE_FILTER_KEYS = ("preference", "exclude", "category", "meal_type")
+
 
 def _preference_selection() -> tuple[list[str], bool]:
     """The preference flags to apply, and whether they are the defaults.
 
-    Defaults apply only to an arrival that states nothing: no preference
-    values, and no marker saying the filters were chosen. They are the
-    customer's own, they only ever narrow, and the page says so and
-    offers the unfiltered catalogue — a shortened list that does not
-    explain itself would read as the whole catalogue.
+    Defaults apply only to an arrival that states nothing at all: no
+    filter key of any kind, and no marker saying the filters were chosen.
+    They are the customer's own, they only ever narrow, and the page says
+    so and offers the unfiltered catalogue — a shortened list that does
+    not explain itself would read as the whole catalogue.
     """
-    stated = request.args.getlist("preference")
-    if stated or request.args.get(FILTERS_STATED):
-        return stated, False
+    if FILTERS_STATED in request.args or any(
+        key in request.args for key in CATALOGUE_FILTER_KEYS
+    ):
+        return request.args.getlist("preference"), False
     if not current_user.is_authenticated:
         return [], False
-    defaults = list(getattr(current_user, "default_preference_filters", []))
-    return defaults, bool(defaults)
+    return list(getattr(current_user, "default_preference_filters", [])), True
 
 
 
@@ -61,12 +71,18 @@ def components() -> str:
     Filters arrive as a plain GET form, so the page works with JavaScript
     disabled and every filtered view is a linkable URL.
     """
-    preferences, defaults_applied = _preference_selection()
+    preferences, from_defaults = _preference_selection()
     browse = catalogue.browse_components(
         category=request.args.get("category"),
         preference_flags=preferences,
         exclude_allergens=request.args.getlist("exclude"),
     )
+    # Reported from what the catalogue accepted, not from what is
+    # stored: profile choices are the union of both catalogues, so a
+    # dish-only or retired flag is dropped when browsing components —
+    # and a notice naming no filters over an unnarrowed list is worse
+    # than no notice at all.
+    defaults_applied = from_defaults and bool(browse.filters.preference_flags)
     return render_template(
         "catalogue/components.html",
         browse=browse,
@@ -94,12 +110,18 @@ def dishes() -> str:
     disabled and every filtered view is a linkable URL. Meal type travels
     as a slug for the same reason.
     """
-    preferences, defaults_applied = _preference_selection()
+    preferences, from_defaults = _preference_selection()
     browse = catalogue.browse_dishes(
         meal_type=request.args.get("meal_type"),
         preference_flags=preferences,
         exclude_allergens=request.args.getlist("exclude"),
     )
+    # Reported from what the catalogue accepted, not from what is
+    # stored: profile choices are the union of both catalogues, so a
+    # dish-only or retired flag is dropped when browsing components —
+    # and a notice naming no filters over an unnarrowed list is worse
+    # than no notice at all.
+    defaults_applied = from_defaults and bool(browse.filters.preference_flags)
     return render_template(
         "catalogue/dishes.html",
         browse=browse,
@@ -135,7 +157,7 @@ def menu(meal_type_slug: str) -> str:
     apply, and serving the whole catalogue under a heading the customer
     did not ask for would be worse than saying so.
     """
-    preferences, defaults_applied = _preference_selection()
+    preferences, from_defaults = _preference_selection()
     browse = catalogue.browse_menu(
         meal_type_slug,
         preference_flags=preferences,
@@ -143,6 +165,12 @@ def menu(meal_type_slug: str) -> str:
     )
     if browse is None:
         abort(404)
+    # Reported from what the catalogue accepted, not from what is
+    # stored: profile choices are the union of both catalogues, so a
+    # dish-only or retired flag is dropped on a menu that does not use
+    # it — and a notice naming no filters over an unnarrowed list is
+    # worse than no notice at all.
+    defaults_applied = from_defaults and bool(browse.filters.preference_flags)
     return render_template(
         "catalogue/menu.html",
         browse=browse,

@@ -24,14 +24,11 @@
       </span>
     </dd>
     <dt>Placed</dt>
-    <dd>
-      {{ order.created_at.day }} {{ order.created_at.strftime('%B %Y') }}
-    </dd>
+    <dd>{{ order.created_at | business_date }}</dd>
     <dt>Requested for</dt>
     <dd>
       {% if order.requested_for %}
-        {{ order.requested_for.day }}
-        {{ order.requested_for.strftime('%B %Y') }}
+        {{ order.requested_for | business_date }}
       {% else %}
         Not stated
       {% endif %}
@@ -48,9 +45,7 @@
     <dd>{{ order.payment_status.value | capitalize }} — settled with the chef</dd>
     {% if order.prepared_at %}
       <dt>Prepared</dt>
-      <dd>
-        {{ order.prepared_at.day }} {{ order.prepared_at.strftime('%B %Y') }}
-      </dd>
+      <dd>{{ order.prepared_at | business_date }}</dd>
     {% endif %}
   </dl>
 
@@ -111,13 +106,19 @@
     Storage instructions and shelf life are on each item's own page, and
     they are the kitchen's current guidance. A use-by counts from the day
     your order is prepared{% if order.prepared_at %} — this one was
-    prepared {{ order.prepared_at.day }}
-    {{ order.prepared_at.strftime('%B %Y') }}{% endif %}.
+    prepared {{ order.prepared_at | business_date }}{% endif %}.
     If anything is unclear, ask the kitchen rather than guessing.
   </p>
 
+  {#
+    Both states are rendered: the control, and the sentence that replaces
+    it once cancelling is no longer the customer's to do. `order-status.js`
+    swaps them when a poll reports that the kitchen has moved on, so the
+    wording stays here in the template and the page never shows a button
+    that can now only produce an error.
+  #}
   {% if can_cancel %}
-    <div class="danger-block">
+    <div class="danger-block" data-order-cancel>
       <h2 class="danger-block__heading">Cancel this order</h2>
       <p class="tab-panel__note">
         You can cancel while an order is placed or confirmed. Once the
@@ -138,6 +139,10 @@
         </div>
       </form>
     </div>
+    <p class="page__note" data-order-cancel-closed hidden>
+      This order is already being prepared, so it can no longer be
+      cancelled here. Contact the kitchen if something has changed.
+    </p>
   {% elif not order.is_terminal %}
     <p class="page__note">
       This order is already being prepared, so it can no longer be

@@ -34,14 +34,22 @@
           {{ order.reference }}
         </a>
       </h2>
+      {#
+        Dates go through `business_date`: every timestamp is stored UTC,
+        and formatting one directly would tell a customer who ordered at
+        nine this morning that they ordered yesterday.
+
+        The count sums quantities rather than counting lines, so it means
+        what the cart badge means. One line of three is three items.
+      #}
+      {% set item_count = order.lines | sum(attribute='quantity') %}
       <p class="order-summary__meta">
-        Placed {{ order.created_at.day }} {{ order.created_at.strftime('%B %Y') }}
+        Placed {{ order.created_at | business_date }}
         {%- if order.requested_for %},
-          for {{ order.requested_for.day }}
-          {{ order.requested_for.strftime('%B %Y') }}
+          for {{ order.requested_for | business_date }}
         {%- endif %} —
         {{ order.fulfilment.value }},
-        {{ order.lines | length }} item{{ '' if order.lines | length == 1 else 's' }}
+        {{ item_count }} item{{ '' if item_count == 1 else 's' }}
       </p>
     </div>
     <p class="order-summary__amount">{{ order.total_cents | price }}</p>

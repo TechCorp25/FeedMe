@@ -288,10 +288,26 @@ The customer's **saved preference filters** pre-apply to a browse page
 arrived at with nothing stated. A GET form submitted with every box cleared
 sends no `preference` at all, which the server cannot tell from a fresh
 arrival, so the filter form carries a hidden `filtered=1` and every "clear"
-link sets it: a URL that states its filters is taken literally. A page
+link sets it. Any recognised filter key counts the same way, so a bookmark
+written before the marker existed still returns what it says. A page
 narrowed by the defaults says so and links to the unfiltered catalogue,
 because a shortened list that does not explain itself reads as the whole
-catalogue.
+catalogue — and the notice reports the flags the catalogue actually
+accepted, since a dish-only flag narrows no component page.
+
+**Money is only ever moved in pairs.** Checkout tolerates a charge that
+never reached the ledger, so cancelling an order asks whether its charge
+exists before writing the offsetting credit: crediting an uncharged order
+would not restore a zero balance, it would invent one the other way. The
+balance page windows from the newest entries and opens on the closing
+aggregate minus what the window accounts for, so an account past the
+display limit still sees this morning's entry and every running total is a
+true figure.
+
+**Dates shown to a customer are the kitchen's.** Timestamps are stored UTC
+and stay UTC; `services/dates.py` renders them through `BUSINESS_TIMEZONE`
+on the way out, because formatting `created_at` directly tells somebody who
+ordered at nine this morning that they ordered yesterday.
 
 **Sign-out** now empties the session rather than only the login. A message
 flashed but never rendered — the order confirmation, which carries the

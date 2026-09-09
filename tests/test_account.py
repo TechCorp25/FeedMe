@@ -500,3 +500,190 @@ def test_a_saved_flag_the_catalogue_no_longer_offers_is_still_shown(
     html = signed_in.get("/account/").get_data(as_text=True)
 
     assert 'value="retired_flag"' in html
+
+
+# --- what the Codex review found -------------------------------------------
+
+
+def test_a_url_that_states_any_filter_is_taken_literally(
+    signed_in, db, harissa, labneh
+):
+    """A bookmark written before saved filters existed still means what it
+    said. `?exclude=milk` states a selection; adding the customer's saved
+    preferences on top would return something else than the link says."""
+    signed_in.post(
+        "/account/", data={"display_name": "Ada", "preference": ["chilli"]}
+    )
+
+    html = signed_in.get("/components?exclude=peanut").get_data(as_text=True)
+
+    assert "Harissa" in html
+    assert "Labneh" in html
+    assert "Filtered by the preferences saved on" not in html
+
+
+def test_a_saved_flag_this_catalogue_does_not_use_claims_nothing(
+    signed_in, db, harissa, labneh
+):
+    """The notice reports what the catalogue accepted, not what is stored.
+
+    Profile choices are the union of both catalogues, so a flag no
+    component carries is dropped when browsing components — and a notice
+    naming no filters, over a list nothing narrowed, would be worse than
+    no notice at all.
+    """
+    db["users"].update_one(
+        {"email": "ada@example.com"},
+        {"$set": {"default_preference_filters": ["retired_flag"]}},
+    )
+
+    html = signed_in.get("/components").get_data(as_text=True)
+
+    assert "Harissa" in html
+    assert "Labneh" in html
+    assert "Filtered by the preferences saved on" not in html
+
+
+def test_editing_the_profile_keeps_a_flag_the_catalogue_retired(
+    signed_in, db, harissa
+):
+    """The form renders a retired flag checked, so saving must keep it.
+
+    Otherwise a customer who changes their phone number silently loses a
+    filter they were still browsing with and never touched.
+    """
+    db["users"].update_one(
+        {"email": "ada@example.com"},
+        {"$set": {"default_preference_filters": ["retired_flag"]}},
+    )
+
+    signed_in.post(
+        "/account/",
+        data={
+            "display_name": "Ada",
+            "phone": "0400 000 000",
+            "preference": ["retired_flag", "chilli"],
+        },
+    )
+
+    stored = db["users"].find_one({"email": "ada@example.com"})
+    assert stored["default_preference_filters"] == ["chilli", "retired_flag"]
+
+
+def test_a_flag_that_is_neither_offered_nor_stored_is_still_refused(
+    signed_in, db, harissa
+):
+    signed_in.post(
+        "/account/",
+        data={"display_name": "Ada", "preference": ["chilli", "injected"]},
+    )
+
+    stored = db["users"].find_one({"email": "ada@example.com"})
+    assert stored["default_preference_filters"] == ["chilli"]
+
+
+def test_dates_are_shown_in_the_kitchens_timezone_not_utc(
+    signed_in, db, harissa, app
+):
+    """An order placed at 09:00 in Melbourne is 23:00 the day before in
+    UTC. Formatting the stored instant directly would tell the customer
+    they ordered yesterday."""
+    reference = _place_order(signed_in, harissa)
+    db["orders"].update_one(
+        {"reference": reference},
+        {"$set": {"created_at": datetime(2026, 9, 8, 23, 30, tzinfo=timezone.utc)}},
+    )
+
+    html = signed_in.get("/account/orders").get_data(as_text=True)
+
+    # 23:30 UTC on the 8th is 09:30 on the 9th in Australia/Melbourne.
+    assert app.config["BUSINESS_TIMEZONE"] == "Australia/Melbourne"
+    assert "9 September 2026" in html
+    assert "8 September 2026" not in html
+
+
+def test_the_history_counts_items_not_lines(signed_in, db, harissa):
+    """One line of three is three items, as it is in the cart badge."""
+    signed_in.post(
+        "/cart/add",
+        data={"item_type": "component", "item_id": harissa, "quantity": "3"},
+    )
+    import re
+    from datetime import date, timedelta
+
+    page = signed_in.get("/checkout").get_data(as_text=True)
+
+    def hidden(name: str) -> str:
+        match = re.search(rf'name="{re.escape(name)}" value="([^"]*)"', page)
+        return match.group(1) if match else ""
+
+    signed_in.post(
+        "/checkout",
+        data={
+            "requested_for": (date.today() + timedelta(days=1)).isoformat(),
+            "fulfilment": "collection",
+            "checkout_token": hidden("checkout_token"),
+            "review_digest": hidden("review_digest"),
+        },
+    )
+
+    html = signed_in.get("/account/orders").get_data(as_text=True)
+
+    assert "3 items" in html
+    assert "1 item" not in html
+
+
+def test_cancelling_an_order_with_no_charge_writes_no_credit(
+    signed_in, db, harissa
+):
+    """Checkout tolerates a charge that never reached the ledger. Crediting
+    such an order would not restore a zero balance — it would invent one
+    the other way, telling the customer the kitchen owes them the lot."""
+    reference = _place_order(signed_in, harissa)
+    db["account_ledger"].delete_many({})
+
+    signed_in.post(f"/account/orders/{reference}/cancel")
+
+    stored = db["orders"].find_one({"reference": reference})
+    assert stored["status"] == OrderStatus.CANCELLED.value
+    assert db["account_ledger"].count_documents({}) == 0
+    # An empty ledger, not a balance saying the kitchen owes them $8.50.
+    assert "Nothing has been charged" in signed_in.get(
+        "/account/balance"
+    ).get_data(as_text=True)
+
+
+def test_the_balance_shows_the_newest_entries_and_carries_the_rest_forward(
+    signed_in, db, harissa, app, monkeypatch
+):
+    """Past the display limit the page must still show this morning's
+    entry, and the running totals must be true figures rather than a
+    partial sum starting from an imagined zero."""
+    from app.services import account as account_service
+
+    monkeypatch.setattr(account_service, "LEDGER_LIMIT", 2)
+
+    user_id = str(db["users"].find_one({"email": "ada@example.com"})["_id"])
+    for index, amount in enumerate((1000, 2000, 400), start=1):
+        db["account_ledger"].insert_one(
+            {
+                "user_id": user_id,
+                "order_id": None,
+                "entry_type": LedgerEntryType.ADJUSTMENT.value,
+                "amount_cents": amount,
+                "description": f"Entry {index}",
+                "created_by": "chef",
+                "created_at": datetime(2026, 9, index, 3, 0, tzinfo=timezone.utc),
+            }
+        )
+
+    html = signed_in.get("/account/balance").get_data(as_text=True)
+
+    # The newest window, not the oldest.
+    assert "Entry 3" in html
+    assert "Entry 1" not in html
+    # The first entry's running total opens on what came before it.
+    assert "Balance carried forward" in html
+    assert "$10.00" in html
+    # And the closing balance is the sum over every entry, shown in full.
+    assert "$34.00" in html

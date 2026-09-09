@@ -107,7 +107,21 @@ def _bounded(raw: str | None, limit: int, message: str) -> str:
     return value
 
 
-def parse_profile_form(form, *, offered: list[str]) -> ProfileUpdate:
+def allowed_preference_flags(offered: list[str], stored: list[str]) -> list[str]:
+    """The flags a profile form may set, in the order they are rendered.
+
+    The catalogue's current vocabulary, plus whatever this customer has
+    already saved. A flag the chef has retired is still stored, still
+    narrows this customer's browsing and is still rendered checked — so
+    dropping it on save would delete data the customer was looking at and
+    did not touch. Anything outside both lists is still refused.
+    """
+    return offered + [flag for flag in stored if flag not in offered]
+
+
+def parse_profile_form(
+    form, *, offered: list[str], stored: list[str] | None = None
+) -> ProfileUpdate:
     """Read the whole form, or raise the first refusal it earns.
 
     Only the five fields the customer owns are read. `role`, `is_active`,
@@ -137,12 +151,16 @@ def parse_profile_form(form, *, offered: list[str]) -> ProfileUpdate:
         f"{MAX_DIETARY_NOTES_LENGTH} characters or fewer.",
     )
 
-    # Kept in the offered order and deduplicated, so the same selection
+    # Kept in the rendered order and deduplicated, so the same selection
     # always stores the same list and always renders the same chips. An
     # unrecognised flag is dropped rather than refused: it widens the
     # browse result, which is the safe direction to fail here as well.
     requested = {value.strip() for value in form.getlist("preference") if value}
-    filters = [flag for flag in offered if flag in requested]
+    filters = [
+        flag
+        for flag in allowed_preference_flags(offered, list(stored or []))
+        if flag in requested
+    ]
 
     return ProfileUpdate(
         display_name=display_name,
@@ -177,14 +195,13 @@ def preference_choices(user: User, offered: list[str]) -> list[PreferenceChoice]
     control that does not show it would be a control that lies.
     """
     stored = list(user.default_preference_filters)
-    values = offered + [flag for flag in stored if flag not in offered]
     return [
         PreferenceChoice(
             value=flag,
             label=preference_flag_label(flag),
             selected=flag in stored,
         )
-        for flag in values
+        for flag in allowed_preference_flags(offered, stored)
     ]
 
 
@@ -275,7 +292,25 @@ def _append_credit(order: Order) -> None:
     it, the kitchen must not cook it, and refusing the cancellation over
     a bookkeeping write would be the worse outcome; the missing entry is
     logged loudly and appended by hand.
+
+    And a credit is only owed where a charge stands. Checkout tolerates a
+    charge that never reached the ledger — the order exists, the entry is
+    repaired by hand — and crediting such an order would not restore a
+    zero balance but invent one the other way, telling the customer the
+    kitchen owes them the whole order. The pair is reconciled together or
+    not at all, and the anomaly is logged with the reference that names
+    both.
     """
+    if order.id is not None and not ledger_repo.has_entry(
+        order.user_id, order.id, LedgerEntryType.CHARGE
+    ):
+        logger.error(
+            "cancelled order has no ledger charge to credit back; "
+            "the pair needs reconciling by hand",
+            extra={"order_id": order.id, "reference": order.reference},
+        )
+        return
+
     try:
         ledger_repo.append_entry(
             order.user_id,
@@ -311,6 +346,10 @@ class LedgerRow:
 class BalanceView:
     rows: list[LedgerRow]
     balance_cents: int
+    #: What the balance already stood at before the first row shown.
+    #: Non-zero only when the account has more history than the window.
+    opening_balance_cents: int = 0
+    is_truncated: bool = False
 
     @property
     def is_empty(self) -> bool:
@@ -318,17 +357,36 @@ class BalanceView:
 
 
 def balance_view(user_id: str) -> BalanceView:
-    """The ledger oldest-first, each row carrying the running balance.
+    """The most recent entries, oldest first, each with the running balance.
 
-    The closing balance is the database's own sum over every entry, not
-    the last row's running total: the rows are a bounded page and the
-    balance is not allowed to be wrong because a customer has more
-    history than one page shows.
+    Two things this must not do. It must not close on the last row's
+    running total — the rows are a bounded window and the balance is not
+    allowed to be wrong because a customer has more history than one page
+    shows, so the closing figure is the database's own sum over every
+    entry. And it must not window from the *oldest* end: an account past
+    the limit would then be pinned to its first hundred entries and would
+    never show this morning's charge, while the closing balance kept
+    moving underneath it.
+
+    So the window is the newest entries, and the balance it opens on is
+    the closing balance minus what the window itself accounts for. The
+    running totals are then true figures rather than a partial sum
+    starting from an imagined zero, and the last row equals the closing
+    balance exactly.
     """
-    entries = ledger_repo.list_entries(user_id, limit=LEDGER_LIMIT)
-    running = 0
+    entries = ledger_repo.list_recent_entries(user_id, limit=LEDGER_LIMIT)
+    closing = ledger_repo.balance_cents(user_id)
+    opening = closing - sum(entry.amount_cents for entry in entries)
+
+    running = opening
     rows: list[LedgerRow] = []
     for entry in entries:
         running += entry.amount_cents
         rows.append(LedgerRow(entry=entry, balance_cents=running))
-    return BalanceView(rows=rows, balance_cents=ledger_repo.balance_cents(user_id))
+
+    return BalanceView(
+        rows=rows,
+        balance_cents=closing,
+        opening_balance_cents=opening,
+        is_truncated=len(entries) >= LEDGER_LIMIT,
+    )

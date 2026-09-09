@@ -85,7 +85,14 @@ def save_profile():
     """
     offered = account_service.offered_preference_flags()
     try:
-        update = account_service.parse_profile_form(request.form, offered=offered)
+        update = account_service.parse_profile_form(
+            request.form,
+            offered=offered,
+            # A flag the chef has retired is still stored, still narrows
+            # this customer's browsing and is still rendered checked, so
+            # it has to survive an edit to an unrelated field.
+            stored=list(current_user.default_preference_filters),
+        )
         account_service.save_profile(current_user, update)
     except account_service.ProfileError as error:
         flash(str(error), "error")

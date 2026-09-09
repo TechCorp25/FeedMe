@@ -26,6 +26,10 @@ document.querySelectorAll('[data-order-status]').forEach((element) => {
   watched.set(reference, label);
 });
 
+/** The cancel control and the sentence that replaces it, if on this page. */
+const cancelBlock = document.querySelector('[data-order-cancel]');
+const cancelClosed = document.querySelector('[data-order-cancel-closed]');
+
 let timer = null;
 if (watched.size) {
   timer = window.setInterval(poll, POLL_INTERVAL_MS);
@@ -54,14 +58,18 @@ async function refresh(reference) {
       `/api/orders/${encodeURIComponent(reference)}/status`,
       { headers: { Accept: 'application/json' }, credentials: 'same-origin' },
     );
-    // A signed-out session answers with a redirect to the sign-in page,
-    // and a reference that is not this customer's answers 404. Neither is
-    // worth a message on a page whose server-rendered status is still
-    // correct: stop asking and leave what the server said standing.
-    if (!response.ok || response.redirected) {
+    // Only a settled answer stops the polling. A signed-out session is
+    // redirected to the sign-in page and a reference that is not this
+    // customer's answers 404: in both cases there is no status coming,
+    // ever, so asking again would be asking nothing. A 500, a 503 or a
+    // 429 is the opposite — the answer exists and the server could not
+    // give it this second — and treating those as final would leave the
+    // status frozen until the customer thought to reload.
+    if (response.redirected || response.status === 404) {
       watched.delete(reference);
       return;
     }
+    if (!response.ok) return;
     payload = await response.json();
   } catch {
     // Offline, or the request was cut off. The rendered status is still
@@ -73,5 +81,23 @@ async function refresh(reference) {
   if (typeof payload?.status_label === 'string') {
     label.textContent = payload.status_label;
   }
+  // The kitchen can start preparing an order while this page sits open.
+  // Leaving the cancel button drawn would contradict the status beside
+  // it and offer a control that can now only produce an error.
+  if (payload?.can_cancel === false) closeCancellation(payload.is_terminal);
   if (payload?.is_terminal) watched.delete(reference);
+}
+
+/**
+ * Take the cancel control off a page it no longer applies to.
+ *
+ * The sentence that replaces it explains that the kitchen has started,
+ * so it is only right while the order is still live. An order that
+ * reached a terminal status — cancelled in another tab, or collected —
+ * says so in the status stamp already, and telling somebody their
+ * cancelled order is being prepared would be worse than saying nothing.
+ */
+function closeCancellation(isTerminal) {
+  if (cancelBlock) cancelBlock.hidden = true;
+  if (cancelClosed) cancelClosed.hidden = Boolean(isTerminal);
 }

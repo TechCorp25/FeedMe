@@ -105,11 +105,20 @@ def _init_extensions(app: Flask, mongo_client: MongoClient | None) -> None:
 
 def _register_template_filters(app: Flask) -> None:
     """Presentation-only helpers. The rule they encode lives in a service."""
+    from app.services.dates import format_business_date
     from app.services.pricing import format_price_aud
 
     # Templates render money through the same formatter as everything
     # else, so integer minor units are never re-implemented in Jinja.
     app.jinja_env.filters["price"] = format_price_aud
+
+    # Every stored timestamp is UTC and stays UTC. A date shown to a
+    # customer is a local one, and the two disagree for the ten hours
+    # between Melbourne midnight and UTC midnight — long enough for a
+    # template formatting `created_at` directly to tell somebody their
+    # order was placed yesterday. The same rule checkout already applies
+    # to `requested_for`, applied on the way out as well as the way in.
+    app.jinja_env.filters["business_date"] = format_business_date
 
 
 def _register_template_context(app: Flask) -> None:

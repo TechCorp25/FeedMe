@@ -21,8 +21,8 @@
     <div class="ledger-scroll">
       <table class="ledger">
         <caption>
-          Oldest first. Entries are never edited — a correction is a new
-          entry that offsets the one before it.
+          The most recent entries, oldest first. Entries are never edited
+          — a correction is a new entry that offsets the one before it.
         </caption>
         <thead>
           <tr>
@@ -34,12 +34,26 @@
           </tr>
         </thead>
         <tbody>
+          {#
+            Shown only when the window does not reach the beginning of
+            the ledger. Without it the first running total would look
+            like a balance starting from nothing, and every figure in
+            the column under it would read as wrong.
+          #}
+          {% if view.is_truncated %}
+            <tr>
+              <td colspan="3">
+                Balance carried forward from earlier entries
+              </td>
+              <td class="ledger__amount">—</td>
+              <td class="ledger__running">
+                {{ view.opening_balance_cents | price }}
+              </td>
+            </tr>
+          {% endif %}
           {% for row in view.rows %}
             <tr>
-              <td>
-                {{ row.entry.created_at.day }}
-                {{ row.entry.created_at.strftime('%B %Y') }}
-              </td>
+              <td>{{ row.entry.created_at | business_date }}</td>
               {#
                 The kind of entry is a word in its own column, never a
                 colour on the amount: a credit has to be tellable from a

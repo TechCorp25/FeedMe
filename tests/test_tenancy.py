@@ -210,7 +210,7 @@ def test_ledger_is_scoped_and_balance_is_aggregated(app, db):
             ),
         )
 
-        assert len(ledger_repo.list_entries(USER_A)) == 2
+        assert len(ledger_repo.list_recent_entries(USER_A)) == 2
         assert ledger_repo.balance_cents(USER_A) == 1000
         assert ledger_repo.balance_cents(USER_B) == 9999
 
