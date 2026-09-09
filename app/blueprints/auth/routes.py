@@ -10,7 +10,7 @@ JavaScript, and the CSRF token is on every one of them.
 
 from __future__ import annotations
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
 
 from app.blueprints.auth import bp
@@ -19,6 +19,7 @@ from app.security.decorators import login_required, public_route
 from app.security.redirects import safe_path
 from app.services import accounts
 from app.services import cart as cart_service
+from app.services import checkout as checkout_service
 
 
 def _next_destination() -> str:
@@ -136,8 +137,17 @@ def logout():
 
     A POST, not a GET: a link that signs a customer out can be triggered
     by anything that fetches it.
+
+    Anything else this customer left in the session goes with them.
+    `logout_user` ends the login, not the session, so a message flashed
+    but never rendered — the confirmation after a redirect the customer
+    never followed, which carries their order reference — would be shown
+    to whoever signs in next on this browser, and the open checkout would
+    send that person to a reference that is not theirs.
     """
     cart_service.clear_cart()
+    checkout_service.clear_checkout_session(session)
+    session.pop("_flashes", None)
     logout_user()
     flash("You are signed out.", "success")
     return redirect(url_for("public.index"))

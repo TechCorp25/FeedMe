@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% import "macros/allergens.html" as allergen_macros %}
+{% import "macros/account.html" as account_macros %}
+
+{% block title %}Order {{ order.reference }} — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block head_scripts %}
+  <script type="module" src="{{ url_for('static', filename='js/order-status.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+  {{ account_macros.account_nav('account.orders') }}
+
+  <p class="page__kicker">Order</p>
+  <h1 class="page__title">{{ order.reference }}</h1>
+
+  <dl class="spec-list" data-order-status="{{ order.reference }}">
+    <dt>Status</dt>
+    <dd>
+      <span class="status-stamp" data-order-status-label>
+        {{ order.status.value | capitalize }}
+      </span>
+    </dd>
+    <dt>Placed</dt>
+    <dd>{{ order.created_at | business_date }}</dd>
+    <dt>Requested for</dt>
+    <dd>
+      {% if order.requested_for %}
+        {{ order.requested_for | business_date }}
+      {% else %}
+        Not stated
+      {% endif %}
+    </dd>
+    <dt>Fulfilment</dt>
+    <dd>
+      {{ order.fulfilment.value | capitalize }}
+      {%- if order.fulfilment.value == 'delivery' %},
+        to the address on
+        <a href="{{ url_for('account.profile') }}">your details</a>
+      {%- endif %}
+    </dd>
+    <dt>Payment</dt>
+    <dd>{{ order.payment_status.value | capitalize }} — settled with the chef</dd>
+    {% if order.prepared_at %}
+      <dt>Prepared</dt>
+      <dd>{{ order.prepared_at | business_date }}</dd>
+    {% endif %}
+  </dl>
+
+  {% if order.customer_note %}
+    <h2 class="tab-panel__heading">Your note</h2>
+    <p class="tab-panel__note">{{ order.customer_note }}</p>
+  {% endif %}
+
+  {% if order.chef_note %}
+    <h2 class="tab-panel__heading">Note from the kitchen</h2>
+    <p class="tab-panel__note">{{ order.chef_note }}</p>
+  {% endif %}
+
+  <h2 class="tab-panel__heading">What you ordered</h2>
+  <p class="page__note">
+    Every line below is the item as it stood when you placed this order —
+    its name, its price and its full allergen declaration. Nothing here
+    changes if the catalogue does.
+  </p>
+
+  <ul class="order-lines">
+    {% for line in order.lines %}
+      <li class="order-line">
+        <div class="order-line__head">
+          <h3 class="cart-line__name">{{ line.name_snapshot }}</h3>
+          <p class="cart-line__price">
+            <span class="cart-line__amount">{{ line.unit_price_cents | price }}</span>
+            <span class="cart-line__unit">× {{ line.quantity }}</span>
+          </p>
+          <p class="cart-line__total">{{ line.line_total_cents | price }}</p>
+        </div>
+        <div class="order-line__allergens">
+          {{ allergen_macros.allergen_declaration(line.allergen_snapshot) }}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <dl class="cart-summary">
+    <dt>Total</dt>
+    <dd class="cart-summary__amount">{{ order.total_cents | price }}</dd>
+  </dl>
+
+  <h2 class="tab-panel__heading">Storage and use-by</h2>
+  {#
+    Deliberately a pointer rather than a date. 04-WORKFLOWS.md computes a
+    use-by as `prepared_at + shelf_life_days` per line, shortest across
+    lines — but 01-DOMAIN.md's OrderLine snapshots the name, the price and
+    the allergen block, and not the storage block. Deriving a date from
+    the catalogue as it stands now would read a shelf life the chef may
+    have edited since, and a use-by that has been lengthened under a
+    customer is the one direction this must never fail in. The snapshot
+    the calculation needs is a schema change 01-DOMAIN.md owns; until it
+    is made, this page says where the current guidance is rather than
+    computing a date it cannot stand behind.
+  #}
+  <p class="tab-panel__note">
+    Storage instructions and shelf life are on each item's own page, and
+    they are the kitchen's current guidance. A use-by counts from the day
+    your order is prepared{% if order.prepared_at %} — this one was
+    prepared {{ order.prepared_at | business_date }}{% endif %}.
+    If anything is unclear, ask the kitchen rather than guessing.
+  </p>
+
+  {#
+    Both states are rendered: the control, and the sentence that replaces
+    it once cancelling is no longer the customer's to do. `order-status.js`
+    swaps them when a poll reports that the kitchen has moved on, so the
+    wording stays here in the template and the page never shows a button
+    that can now only produce an error.
+  #}
+  {% if can_cancel %}
+    <div class="danger-block" data-order-cancel>
+      <h2 class="danger-block__heading">Cancel this order</h2>
+      <p class="tab-panel__note">
+        You can cancel while an order is placed or confirmed. Once the
+        kitchen starts preparing it, only the chef can. Cancelling credits
+        the full amount back to
+        <a href="{{ url_for('account.balance') }}">your balance</a>.
+      </p>
+      <form
+        class="form"
+        method="post"
+        action="{{ url_for('account.cancel_order', reference=order.reference) }}"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form__actions">
+          <button class="btn btn--danger" type="submit">
+            Cancel order {{ order.reference }}
+          </button>
+        </div>
+      </form>
+    </div>
+    <p class="page__note" data-order-cancel-closed hidden>
+      This order is already being prepared, so it can no longer be
+      cancelled here. Contact the kitchen if something has changed.
+    </p>
+  {% elif not order.is_terminal %}
+    <p class="page__note">
+      This order is already being prepared, so it can no longer be
+      cancelled here. Contact the kitchen if something has changed.
+    </p>
+  {% endif %}
+
+  <p class="mt-8 flex flex-wrap gap-3">
+    <a class="btn btn--ghost" href="{{ url_for('account.orders') }}">All your orders</a>
+    <a class="btn btn--ghost" href="{{ url_for('public.dishes') }}">Browse dishes</a>
+  </p>
+{% endblock %}

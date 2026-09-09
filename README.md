@@ -135,6 +135,13 @@ recognised from the variables it really sets, an explicit value always
 beats a detected one, and `X-Forwarded-*` is honoured on a platform proxy
 and ignored everywhere else.
 
+`tests/test_account.py` covers the account area: another customer's order
+answering 404 on every surface that takes a reference, a cancellation that
+credits exactly what it charged, the same cancellation submitted twice
+writing one credit, a profile form that cannot reach `role` or
+`password_hash`, saved filters narrowing a browse page and saying so, and a
+`filtered=1` URL being taken literally.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs three jobs on every pull request:
@@ -173,7 +180,13 @@ accounts and checkout that turn a cart into an order:
 | `GET`/`POST /login` | sign in, and continue to wherever you were going |
 | `POST /logout` | sign out, and take the cart with it |
 | `GET`/`POST /checkout` | review, choose a date and fulfilment, confirm |
-| `GET /orders/<reference>` | one placed order, as it was shown when placed |
+| `GET /orders/<reference>` | permanent redirect to the same order under `/account` |
+| `GET`/`POST /account` | name, phone, address, dietary notes, default filters |
+| `GET /account/orders` | order history, newest first |
+| `GET /account/orders/<reference>` | one placed order, as it was shown when placed |
+| `POST /account/orders/<reference>/cancel` | cancel from `placed` or `confirmed` |
+| `GET /account/balance` | ledger entries and the running balance |
+| `GET /api/orders/<reference>/status` | live status for a non-terminal order |
 
 All three browse surfaces offer the **allergen exclusion filter**. It hides an
 item that *declares* an allergen, and marks rather than hides an item that
@@ -249,13 +262,75 @@ that has already passed.
 endpoint carries, and exits non-zero on an unmarked one. It was an empty file
 passing a CI gate in silence; the gate now has something behind it.
 
-Not built: the customer account area — profile, order history, the ledger view
-and customer cancellation — and every chef-admin screen: the catalogue
-editors, the allergen editor, the order queue, the prep sheet and the ledger.
+The **account area** is where a customer reads their own record: their
+details, their orders, one order in full, and the balance those orders
+built. `/orders/<reference>` — where checkout used to send people —
+permanently redirects into it, because two pages rendering one order drift
+the moment either gains a control the other lacks, and the cancel button is
+that control.
 
-Next slice: **the customer account area.** `/account/orders` and
-`/account/orders/<reference>` are the natural home for the order list and for
-cancellation from `placed` or `confirmed`, which needs the one repository
-function checkout did not: an update that writes a transition back to an
-order. `services/order_state.py` already decides what that transition is
-allowed to be.
+**Cancellation** is a compare-and-set, not a status write.
+`services/order_state.py` decides the transition and
+`orders.apply_transition` writes it filtered on the status it was decided
+against, so a confirmation clicked twice — or a chef moving the same order
+on at that moment — cancels once and credits once. The transition is written
+first and the offsetting `credit` second: a credit written first would stand
+alone if the transition then lost its race, crediting a customer for an
+order still being prepared. `tests/test_account.py` holds it to that by
+submitting the same cancellation twice and counting the ledger.
+
+**Live status** is `GET /api/orders/<reference>/status`, the second of the
+two JSON surfaces `00-SYSTEM.md` allows. Every status is rendered by the
+server on first request, so `order-status.js` only saves a refresh; it stops
+polling an order that has reached a terminal status.
+
+The customer's **saved preference filters** pre-apply to a browse page
+arrived at with nothing stated. A GET form submitted with every box cleared
+sends no `preference` at all, which the server cannot tell from a fresh
+arrival, so the filter form carries a hidden `filtered=1` and every "clear"
+link sets it. Any recognised filter key counts the same way, so a bookmark
+written before the marker existed still returns what it says. A page
+narrowed by the defaults says so and links to the unfiltered catalogue,
+because a shortened list that does not explain itself reads as the whole
+catalogue — and the notice reports the flags the catalogue actually
+accepted, since a dish-only flag narrows no component page.
+
+**Money is only ever moved in pairs.** Checkout tolerates a charge that
+never reached the ledger, so cancelling an order asks whether its charge
+exists before writing the offsetting credit: crediting an uncharged order
+would not restore a zero balance, it would invent one the other way. The
+balance page windows from the newest entries and opens on the closing
+aggregate minus what the window accounts for, so an account past the
+display limit still sees this morning's entry and every running total is a
+true figure.
+
+**Dates shown to a customer are the kitchen's.** Timestamps are stored UTC
+and stay UTC; `services/dates.py` renders them through `BUSINESS_TIMEZONE`
+on the way out, because formatting `created_at` directly tells somebody who
+ordered at nine this morning that they ordered yesterday.
+
+**Sign-out** now empties the session rather than only the login. A message
+flashed but never rendered — the order confirmation, which carries the
+reference — survived `logout_user` and was shown to whoever signed in next
+on that browser, as did the open checkout's `last_order_reference`.
+
+The **use-by date is deliberately not computed.** `04-WORKFLOWS.md` defines
+it as `prepared_at + shelf_life_days`, shortest across lines, but
+`OrderLine` snapshots the name, the price and the allergen block and not the
+storage block — so the shelf life is only readable from the catalogue as it
+stands now, which the chef may have edited since. A use-by *lengthened*
+under a customer is the one direction this must never fail in, so the order
+page points at the item's current guidance instead. Closing it means a
+storage snapshot on `OrderLine`, which is a change to the order document
+`01-DOMAIN.md` owns; the decision is written up there.
+
+Not built: every chef-admin screen — the catalogue editors, the allergen
+editor, the order queue, the prep sheet and the chef's view of a customer
+ledger.
+
+Next slice: **the chef order queue.** `/chef/orders` needs
+`chef_list_order_queue`, which already exists, and the chef half of the
+transition writer this slice added — the same compare-and-set, called with
+`actor_is_chef=True` so the `chef_note` that `prepping → cancelled` and
+`ready → cancelled` require is enforced where `order_state.py` already
+demands it.

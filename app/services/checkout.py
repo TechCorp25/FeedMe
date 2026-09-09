@@ -54,6 +54,29 @@ logger = logging.getLogger(__name__)
 #: form rather than sitting in the queue for three centuries.
 MAX_LEAD_DAYS = 90
 
+#: The confirmation form's single-use token, and the reference of the
+#: order it produced. Both live in the session because that is where the
+#: checkout flow already keeps state; 01-DOMAIN.md names six collections
+#: and a pending checkout is not one of them. They are named here rather
+#: than in the blueprint that sets them because sign-out has to clear
+#: them, and an auth blueprint importing an order blueprint to find out
+#: what to clear would be the wrong direction of dependency.
+CHECKOUT_TOKEN_KEY = "checkout_token"
+LAST_ORDER_KEY = "last_order_reference"
+
+
+def clear_checkout_session(session) -> None:
+    """Forget an open checkout. Called at sign-out.
+
+    Left behind, `last_order_reference` sends the *next* person to sign in
+    on this browser to the previous customer's order reference — a 404,
+    because the order is not theirs, but their reference in somebody
+    else's address bar all the same.
+    """
+    session.pop(CHECKOUT_TOKEN_KEY, None)
+    session.pop(LAST_ORDER_KEY, None)
+
+
 MAX_NOTE_LENGTH = 500
 MAX_ADDRESS_LENGTH = 500
 

@@ -123,6 +123,80 @@ Rules:
 
 All routes scoped by `user_id` at the repository. Requesting another customer's order returns 404, never 403.
 
+*Decided by the account slice:*
+
+- **One order, one page.** `/orders/<reference>`, which checkout redirected
+  to before this area existed, is a permanent redirect to
+  `/account/orders/<reference>`. Two pages rendering one order drift the
+  moment either gains a control the other lacks, and the cancel button is
+  that control.
+- **Cancellation is a compare-and-set.** `order_state.py` decides the
+  transition and `orders.apply_transition` writes it filtered on the status
+  it was decided against, so a confirmation clicked twice — or a chef
+  moving the same order on at that moment — cancels once and credits once.
+  The transition is written first and the offsetting `credit` second: a
+  credit written first would stand alone if the transition then lost its
+  race, crediting a customer for an order still being prepared. The
+  remaining failure is a cancellation whose credit is missing, which is
+  detectable by `order_id`, repairable by appending the entry, and logged
+  at ERROR — the mirror of the one checkout carries.
+- **Live status is an enhancement.** `GET /api/orders/<reference>/status` is
+  the second of the two JSON surfaces 00-SYSTEM.md allows. Every status is
+  rendered server-side on first request, and the poller stops asking about
+  an order that has reached a terminal status. It stops only on a settled
+  answer — a sign-in redirect or a 404; a 500, 503 or 429 is retried, since
+  treating those as final would freeze the status until somebody reloaded.
+  A poll that reports the kitchen has started swaps the cancel control for
+  the sentence that explains it, rather than leaving a button that can now
+  only produce an error.
+- **Saved preference filters need a marker.** `default_preference_filters`
+  pre-applies to a browse page arrived at with nothing stated. A GET form
+  submitted with every box cleared sends no `preference` at all, which the
+  server cannot tell from a fresh arrival, so the filter form carries a
+  hidden `filtered=1` and every "clear" link sets it. *Any* recognised
+  filter key — `preference`, `exclude`, `category`, `meal_type` — counts
+  the same way, so a bookmark written before the marker existed still
+  returns what it says. A page narrowed by the defaults says so and offers
+  the unfiltered catalogue, because a shortened list that does not explain
+  itself reads as the whole catalogue; the notice is derived from the flags
+  the surface's catalogue *accepted*, since profile choices are the union of
+  both catalogues and a dish-only flag narrows no component page.
+- **A credit is only owed where a charge stands.** Checkout tolerates a
+  charge that never reached the ledger. Cancelling such an order must not
+  append the offsetting credit: that would not restore a zero balance, it
+  would invent one the other way and tell the customer the kitchen owes them
+  the whole order. The pair is reconciled together or not at all, and the
+  anomaly is logged at ERROR with the reference that names both.
+- **The balance page windows from the newest end.** Sorting ascending and
+  then limiting pins an account past the limit to its oldest entries while
+  the closing balance keeps moving underneath. The window is therefore the
+  most recent entries, and the balance it opens on is the closing aggregate
+  minus what the window accounts for — so every running total is a true
+  figure and the last row equals the closing balance.
+- **Customer-facing dates are the kitchen's, on the way out as well as in.**
+  Every stored timestamp is UTC and stays UTC, but a date a customer reads
+  is local: formatting `created_at` directly tells somebody who ordered at
+  nine this morning that they ordered yesterday. `services/dates.py` renders
+  through `BUSINESS_TIMEZONE`; a `date` the customer chose is already local
+  and is never shifted.
+- **Sign-out empties the session, not just the login.** `logout_user` ends
+  the login; a message flashed but never rendered, and the open checkout's
+  `last_order_reference`, both survived it and reached whoever signed in
+  next on that browser. Both are cleared at sign-out now.
+
+*Deferred, and owned by 01-DOMAIN.md:* **the use-by date.** This document
+computes it as `prepared_at + shelf_life_days` per line, shortest across
+lines. `OrderLine` snapshots the name, the unit price and the allergen
+block, and not the `StorageBlock` — so the shelf life is only readable from
+the catalogue as it stands now, which the chef may have edited since the
+order was prepared. A use-by that has been *lengthened* under a customer is
+the one direction this must never fail in, so the order page points at the
+item's current guidance rather than computing a date it cannot stand
+behind. Closing it means adding a storage snapshot to `OrderLine`, which is
+a change to the order document 01-DOMAIN.md owns. Decide the direction
+there: either the whole `StorageBlock` is snapshotted like the allergen
+block, or `shelf_life_days` alone is.
+
 ## Chef-admin flows
 
 Single `chef_admin` account. Full capability, no sub-roles.

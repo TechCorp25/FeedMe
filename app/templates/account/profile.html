@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% import "macros/account.html" as account_macros %}
+
+{% block title %}Your details — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block content %}
+  {{ account_macros.account_nav('account.profile') }}
+
+  <h1 class="page__title">Your details</h1>
+  <p class="page__lede">
+    What the kitchen needs to reach you, and the filters your browsing
+    starts from.
+  </p>
+
+  <form class="form" method="post" action="{{ url_for('account.save_profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form__field">
+      <label class="form__label" for="display_name">Name</label>
+      <input
+        class="form__input"
+        id="display_name"
+        name="display_name"
+        type="text"
+        autocomplete="name"
+        maxlength="{{ limits.display_name }}"
+        value="{{ values.display_name }}"
+      >
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="phone">Phone</label>
+      <input
+        class="form__input form__input--short"
+        id="phone"
+        name="phone"
+        type="tel"
+        autocomplete="tel"
+        maxlength="{{ limits.phone }}"
+        value="{{ values.phone }}"
+      >
+      <p class="form__hint">
+        Optional. The kitchen calls this number if something about your
+        order needs a decision.
+      </p>
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="delivery_address">Delivery address</label>
+      <textarea
+        class="form__input"
+        id="delivery_address"
+        name="delivery_address"
+        rows="3"
+        autocomplete="street-address"
+        maxlength="{{ limits.delivery_address }}"
+      >{{ values.delivery_address }}</textarea>
+      <p class="form__hint">
+        Kept here rather than on each order, so the chef always reads the
+        current one. Changing it changes where a delivery already placed
+        will go.
+      </p>
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="dietary_notes">Dietary notes</label>
+      <textarea
+        class="form__input"
+        id="dietary_notes"
+        name="dietary_notes"
+        rows="4"
+        maxlength="{{ limits.dietary_notes }}"
+      >{{ values.dietary_notes }}</textarea>
+      {#
+        Said at the control, not in a footnote. A note is free text the
+        chef reads; it is not a filter and it is not an allergen
+        declaration, and a customer who believes it is one would be
+        relying on it for a decision it cannot carry.
+      #}
+      <p class="form__hint">
+        <strong>This is a note the chef reads, not a safety filter.</strong>
+        Nothing here removes an item from a page or from an order. Always
+        read the allergen declaration on the item itself.
+      </p>
+    </div>
+
+    {% if preference_choices %}
+      <fieldset class="form__fieldset">
+        <legend class="form__label">Filters to start from</legend>
+        <ul class="filters__options">
+          {% for choice in preference_choices %}
+            <li class="filters__option">
+              <input
+                type="checkbox"
+                id="default-preference-{{ choice.value }}"
+                name="preference"
+                value="{{ choice.value }}"
+                {{ 'checked' if choice.selected else '' }}
+              >
+              <label for="default-preference-{{ choice.value }}">{{ choice.label }}</label>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="form__hint">
+          These are taste and dietary preferences, not allergen information.
+          A browse page you arrive at with no filters of its own starts from
+          these, says so, and offers a link to the unfiltered catalogue.
+        </p>
+      </fieldset>
+    {% endif %}
+
+    <div class="form__actions">
+      <button class="btn" type="submit">Save details</button>
+      <a class="btn btn--ghost" href="{{ url_for('account.orders') }}">Your orders</a>
+    </div>
+  </form>
+
+  {#
+    Said plainly rather than offered as a control that cannot work: there
+    is no password reset, because a reset is delivered by email and
+    04-WORKFLOWS.md keeps notifications out of v1 entirely.
+  #}
+  <h2 class="tab-panel__heading">Your password</h2>
+  <p class="tab-panel__note">
+    Passwords are changed by the chef, out of band. There is no reset form
+    here because a reset arrives by email, and this service sends none.
+  </p>
+{% endblock %}
