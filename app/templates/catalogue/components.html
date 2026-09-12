@@ -36,7 +36,8 @@
         {{ catalogue_macros.item_card(
              item,
              url_for('public.component_detail', slug=item.slug),
-             browse.cautions_for(item)) }}
+             browse.cautions_for(item),
+             'component') }}
       {% endfor %}
     </ul>
   {% endif %}

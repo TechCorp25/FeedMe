@@ -54,9 +54,10 @@
     </div>
     <p class="order-summary__amount">{{ order.total_cents | price }}</p>
     <p>
-      <span class="status-stamp" data-order-status-label>
-        {{ order.status.value | capitalize }}
-      </span>
+      <span
+        class="status-stamp status-stamp--{{ order.status.value }}"
+        data-order-status-label
+      >{{ order.status.value | capitalize }}</span>
     </p>
   </li>
 {% endmacro %}

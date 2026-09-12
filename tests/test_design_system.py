@@ -27,19 +27,50 @@ COMPILED = ROOT / "app/static/css/app.css"
 SOURCE = ROOT / "app/static/css/tailwind.css"
 FONT_DIR = ROOT / "app/static/fonts"
 
+#: Every foreground token, and every background it is allowed to sit on.
+#:
+#: Each hue is used as text somewhere — a price in `saffron`, a menu link in
+#: `berry`, a cancelled order in `danger` — and the interface puts any of them
+#: on any of the three neutral surfaces. Listing the product rather than a
+#: hand-picked subset means retuning one token is checked everywhere it can
+#: land, not only where somebody remembered to write the pair down.
+FOREGROUNDS = [
+    "ink",
+    "ink-muted",
+    "accent",
+    "saffron",
+    "berry",
+    "stamp",
+    "success",
+    "danger",
+    "info",
+]
+
+#: The neutral surfaces any foreground may be drawn on.
+BACKGROUNDS = ["ground", "surface", "sunken"]
+
+#: A hue drawn on its own tint — a `success` flash, a `stamp` allergen chip,
+#: a `saffron` cart badge. `ink` lands on all of them too, because a soft
+#: surface carries ordinary prose as often as it carries its own hue.
+SOFT_PAIRS = [
+    (foreground, f"{foreground}-soft")
+    for foreground in ("accent", "saffron", "berry", "stamp", "success", "danger", "info")
+] + [
+    ("ink", f"{hue}-soft")
+    for hue in ("accent", "saffron", "berry", "stamp", "success", "danger", "info")
+]
+
 #: Every pair that carries text, as (foreground token, background token).
 #: 03-FRONTEND.md fixes the floor at WCAG AA for body text.
-TEXT_PAIRS = [
-    ("ink", "ground"),
-    ("ink", "surface"),
-    ("ink-muted", "ground"),
-    ("ink-muted", "surface"),
-    ("accent", "ground"),
-    ("accent", "surface"),
-    ("stamp", "ground"),
-    ("stamp", "surface"),
-    ("accent-ink", "accent"),
-]
+TEXT_PAIRS = (
+    [
+        (foreground, background)
+        for foreground in FOREGROUNDS
+        for background in BACKGROUNDS
+    ]
+    + SOFT_PAIRS
+    + [("accent-ink", "accent")]
+)
 
 CONTRAST_FLOOR = 4.5
 
@@ -173,3 +204,55 @@ def test_allergen_chips_differ_by_more_than_colour():
 
     assert "border-dashed" in declarations(".chip--may")
     assert "border-dashed" not in declarations(".chip--contains")
+
+
+#: Class names the templates compose at render time. None of them ever appears
+#: whole in a scanned file, so Tailwind's extractor cannot see them and the
+#: build drops the rules unless the config safelists them.
+COMPOSED_CLASSES = [
+    "flash--success",
+    "flash--error",
+    "card--component",
+    "card--dish",
+    "status-stamp--placed",
+    "status-stamp--confirmed",
+    "status-stamp--prepping",
+    "status-stamp--ready",
+    "status-stamp--collected",
+    "status-stamp--delivered",
+    "status-stamp--cancelled",
+]
+
+
+@pytest.mark.parametrize("name", COMPOSED_CLASSES)
+def test_dynamically_composed_classes_survive_the_build(compiled, name):
+    """A class Jinja builds from a variable must be safelisted to survive.
+
+    This is not hypothetical. `.flash--error` was written in the source
+    stylesheet and applied as `flash--{{ category }}`, so the extractor never
+    saw it and the compiled sheet shipped without it: every error flash was
+    drawn as an ordinary one, in every release, with the rule sitting in the
+    source looking correct the whole time. Nothing in a template, a diff or a
+    server-side test can catch that — only the compiled artifact can.
+    """
+    assert f".{name}" in compiled, (
+        f"`{name}` is missing from the compiled stylesheet. It is composed at "
+        "render time, so add it to `safelist` in tailwind.config.js."
+    )
+
+
+def test_every_status_has_a_stamp_modifier():
+    """A status the state machine can reach, with no stamp rule, is unstyled.
+
+    The stamp degrades to its neutral form rather than to nothing, so this
+    would not break a page — it would quietly stop colour-coding one status
+    while the other six kept it, which reads as "this order is different"
+    rather than "this rule is missing".
+    """
+    from app.models.orders import OrderStatus
+
+    source = strip_comments(SOURCE.read_text())
+    for status in OrderStatus:
+        assert f".status-stamp--{status.value}" in source, (
+            f"no stamp rule for the `{status.value}` status"
+        )

@@ -54,7 +54,8 @@
         {{ catalogue_macros.item_card(
              item,
              url_for('public.dish_detail', slug=item.slug),
-             browse.cautions_for(item)) }}
+             browse.cautions_for(item),
+             'dish') }}
       {% endfor %}
     </ul>
   {% endif %}

@@ -14,24 +14,54 @@ component, an account — is presented as something specifically made and
 labelled, not picked off a shelf: a condensed stamped label over a calm serif
 description, on a kraft-toned ground.
 
-**Colour.** Eight tokens, each defined for both themes in `tailwind.css` as RGB
-channels so Tailwind's alpha modifiers keep working. This is the only place a
-raw colour appears.
+**Colour.** Twenty-one tokens, each defined for both themes in `tailwind.css`
+as RGB channels so Tailwind's alpha modifiers keep working. This is the only
+place a raw colour appears.
+
+Six neutrals carry the kraft ground the system is built on. Above them sit
+four *label hues*, each with exactly one job, so a colour is never decoration
+and never has to be learnt twice; and three *signal hues* that only ever
+report an outcome. Every hue has a `-soft` companion — the same colour at a
+background weight — so a coloured surface is a token rather than an opacity
+modifier invented at the call site.
 
 | Token | Light | Dark | Used as |
 |---|---|---|---|
-| `ground` | `#EFE8DA` | `#191410` | page background |
-| `surface` | `#F7F3EA` | `#221B15` | card, panel and header background |
-| `ink` | `#221B13` | `#EDE3D2` | primary text, component boundaries |
-| `ink-muted` | `#5A4B39` | `#B3A48E` | secondary text, `may_contain` |
-| `line` | `#CFC3AC` | `#3A2F25` | hairline dividers — decorative only |
-| `accent` | `#2F5D46` | `#7FB39A` | links, primary buttons, active tab, focus ring |
-| `accent-ink` | `#FFFFFF` | `#12201A` | button label on `accent` |
-| `stamp` | `#7A3626` | `#C97656` | the `contains` allergen declaration |
+| `ground` | `#F5EFE3` | `#14110D` | page background |
+| `surface` | `#FFFBF2` | `#1E1913` | card, panel and header background |
+| `sunken` | `#EAE1CE` | `#272019` | recessed panel: filter strip, table head, allergen snapshot |
+| `ink` | `#1F1913` | `#F1E8D7` | primary text, component boundaries |
+| `ink-muted` | `#554734` | `#B7A88F` | secondary text, `may_contain` |
+| `line` | `#D4C8B0` | `#3C3128` | hairline dividers — decorative only |
+| `accent` / `-soft` | `#1C6A4A` / `#DCEDE2` | `#74C49C` / `#14301F` | what you can do: links, primary buttons, active tab, focus ring |
+| `accent-ink` | `#FFFFFF` | `#0A1A12` | button label on `accent` |
+| `saffron` / `-soft` | `#8A5300` / `#FAEBCC` | `#EBB552` / `#33260E` | what it costs: every price, the cart badge, an order total |
+| `berry` / `-soft` | `#7A2B50` / `#F4E4EC` | `#EE9DBE` / `#331624` | the way in: meal-type menus, taste chips, the dish catalogue's rule |
+| `stamp` / `-soft` | `#8C2F1E` / `#FAE3DD` | `#F19070` / `#331A12` | the `contains` allergen declaration, and nothing else |
+| `success` / `-soft` | `#1B6B3A` / `#DEF0E3` | `#7FD4A1` / `#10291A` | it worked: a confirmation, a fulfilled order |
+| `danger` / `-soft` | `#A3201A` / `#FBE2E0` | `#FF9A8D` / `#341613` | it failed, or it undoes something: errors, cancellation |
+| `info` / `-soft` | `#1A4F8B` / `#E0EBF8` | `#93BFF2` / `#11223A` | not yet known: a pending declaration, a placed order |
 
-Every text pair clears 4.5:1 in both themes; the lowest is `stamp` on `surface`
-in dark at 5.03:1. `line` is 1.4:1 and therefore never carries text or meaning —
-a boundary that identifies a component uses `ink` at 2px, not `line`.
+Two rules keep the set honest:
+
+- **`stamp` is the allergen declaration and nothing else.** It used to double
+  as the error colour, which meant a mistyped password was marked in the same
+  ink as "contains peanut". Errors now take `danger`, so the stamped red on a
+  page always means the same thing.
+- **A colour never carries a distinction on its own.** Every status stamp
+  names its status, every flash reads as a sentence, and the two allergen
+  chips differ by border style and wording as well as hue — so the interface
+  survives a monochrome print and a colour-vision deficiency. Where a hue
+  does identify something — the rule along the top of a catalogue card — the
+  page heading and the card's own link say the same thing first.
+
+Every text pair clears 4.5:1 in both themes against `ground`, `surface`,
+`sunken` and its own `-soft`; the narrowest is `saffron` on `sunken` in light
+at 4.87:1. `line` is 1.45:1 and therefore never carries text or meaning — a
+boundary that identifies a component uses `ink` at 2px, not `line`.
+`test_design_system.py` checks the whole product of foregrounds against
+backgrounds rather than a hand-picked list, so retuning one token is verified
+everywhere it can land.
 
 **Type.** Two self-hosted families, both SIL OFL 1.1, in `app/static/fonts/`
 with their licences beside them. Google publishes both as variable fonts, so
@@ -66,6 +96,12 @@ rules this document already sets:
 ## Tailwind conventions
 
 - Utilities in markup. No `@apply` except for genuinely repeated primitives (`.btn`, `.chip`, `.tab`) defined in `tailwind.css`.
+- **Any class name a template composes at render time must be in the config's
+  `safelist`.** Tailwind's extractor only sees whole class names in scanned
+  files, so `flash--{{ category }}`, `status-stamp--{{ order.status.value }}`
+  and `card--{{ kind }}` produce nothing for it to keep. `.flash--error` was
+  dropped from the build exactly this way, and shipped for several releases
+  styled as an ordinary flash.
 - Design tokens in `tailwind.config.js` — colours, type scale, spacing, radius. Values live in
   `tailwind.css` as CSS custom properties. No arbitrary hex values inline.
 - Fonts are self-hosted from `app/static/fonts/`. No CDN at runtime, no network at build time.
