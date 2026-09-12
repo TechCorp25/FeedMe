@@ -201,6 +201,29 @@ def chef_list_order_queue(
     return parse_many(Order, cursor)
 
 
+def chef_list_orders_for_date(requested_for: date) -> list[Order]:
+    """Every order requested for one date, cancelled ones excluded.
+
+    The prep sheet's read, and deliberately not a flag on the queue: the
+    queue is a working list that defaults to what is outstanding, while a
+    day's prep is every order standing for that day whatever stage it has
+    reached. A cancelled order is the one thing the kitchen must not
+    cook, so it is filtered here rather than left to the caller — a prep
+    sheet that lists it is food in the bin.
+    """
+    return parse_many(
+        Order,
+        get_db()[COLLECTION]
+        .find(
+            {
+                "requested_for": as_mongo_date(requested_for),
+                "status": {"$ne": OrderStatus.CANCELLED.value},
+            }
+        )
+        .sort("reference", ASCENDING),
+    )
+
+
 def chef_apply_transition(order: Order, *, expected_status: OrderStatus) -> bool:
     """Write a transition the chef decided. True when it was applied.
 

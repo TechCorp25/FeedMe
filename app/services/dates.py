@@ -15,7 +15,7 @@ This is the same rule on the way out.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import current_app
@@ -66,3 +66,16 @@ def format_business_date(moment: datetime | date | None) -> str:
     """`8 September 2026`, in the kitchen's timezone. Empty when absent."""
     local = to_business_date(moment)
     return "" if local is None else local.strftime(DATE_FORMAT)
+
+
+def business_today() -> date:
+    """Today in the kitchen's timezone.
+
+    The prep sheet is organised by the day the kitchen is working, and
+    for the ten hours between Melbourne midnight and UTC midnight
+    `date.today()` on a UTC host is yesterday — which would open the
+    sheet on a day whose orders have already gone out.
+    """
+    zone = business_zone(current_app.config["BUSINESS_TIMEZONE"])
+    moment = datetime.now(timezone.utc)
+    return moment.date() if zone is None else moment.astimezone(zone).date()

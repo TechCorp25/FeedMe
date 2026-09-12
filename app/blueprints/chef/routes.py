@@ -18,7 +18,8 @@ from app.blueprints.chef import bp
 from app.db.repositories import orders as orders_repo
 from app.models.orders import OrderStatus
 from app.security.decorators import chef_required
-from app.services import chef_orders
+from app.services import chef_orders, prep_sheet
+from app.services.dates import business_today
 
 
 def _queue_redirect():
@@ -116,3 +117,39 @@ def payment(order_id: str):
         "success",
     )
     return _queue_redirect()
+
+
+@bp.get("/prep")
+@chef_required
+def prep_today():
+    """Today's sheet, or the day a date form asked for.
+
+    Two jobs, deliberately one endpoint. The nav links here without a
+    date, so "today" is resolved at the moment the chef follows the link
+    rather than baked into a cached page. And the date picker on the
+    sheet is a plain GET form, which can only submit a query string —
+    this turns `?on=` into the path segment that makes a sheet linkable
+    and printable with its date in the URL. No JavaScript either way.
+    """
+    asked = request.args.get("on")
+    chosen = prep_sheet.parse_sheet_date(asked) if asked else None
+    return redirect(
+        url_for("chef.prep", on=(chosen or business_today()).isoformat())
+    )
+
+
+@bp.get("/prep/<on>")
+@chef_required
+def prep(on: str) -> str:
+    """One day's pick list, rolled up across dishes and components."""
+    sheet_date = prep_sheet.parse_sheet_date(on)
+    if sheet_date is None:
+        # Not a date is not a page. A 404 rather than a redirect to today,
+        # because silently showing a different day than the URL names is
+        # how somebody preps the wrong date.
+        abort(404)
+    return render_template(
+        "chef/prep.html",
+        sheet=prep_sheet.build_sheet(sheet_date),
+        today=business_today(),
+    )
