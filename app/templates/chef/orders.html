@@ -101,7 +101,20 @@
 
           <dl class="spec-list">
             <dt>Customer</dt>
-            <dd>{{ entry.customer_name }}</dd>
+            <dd>
+              {{ entry.customer_name }}
+              {#
+                The way into the ledger. 04-WORKFLOWS.md gives the ledger a
+                URL but no index page to reach it from, and the queue is
+                where the chef already has the customer in front of them.
+              #}
+              {% if entry.customer %}
+                —
+                <a href="{{ url_for('chef.customer_ledger', user_id=entry.customer.id) }}">
+                  ledger
+                </a>
+              {% endif %}
+            </dd>
             {% if entry.customer and entry.customer.phone %}
               <dt>Phone</dt>
               <dd>{{ entry.customer.phone }}</dd>

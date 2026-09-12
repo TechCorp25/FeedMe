@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{% macro value_of(name, fallback='') %}
+  {%- if submitted is defined -%}{{ submitted.get(name, '') }}
+  {%- else -%}{{ fallback }}{%- endif -%}
+{% endmacro %}
+
+{% set customer = ledger.customer %}
+{% set customer_name = customer.display_name or customer.email %}
+
+{% block title %}Ledger — {{ customer_name }} — FeedMe{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.orders') }}
+
+  <p class="page__kicker">Customer ledger</p>
+  <h1 class="page__title">{{ customer_name }}</h1>
+  <p class="page__lede">
+    {{ customer.email }}{% if customer.phone %} — {{ customer.phone }}{% endif %}
+  </p>
+
+  {#
+    Said once, at the top, because it governs everything below it: there
+    is no edit control and no delete control on this page, and no route
+    behind one. A correction is a new entry that offsets the old one
+    (04-WORKFLOWS.md).
+  #}
+  <p class="notice">
+    This ledger is append-only. Nothing here can be edited or deleted — a
+    correction is a new entry that offsets the old one, so the record shows
+    both what happened and what was put right.
+  </p>
+
+  <dl class="balance-total">
+    <dt>Balance</dt>
+    <dd>
+      {{ ledger.balance_cents | price }}
+      <span class="ledger__direction">
+        {%- if ledger.balance_cents > 0 %} owed to the kitchen
+        {%- elif ledger.balance_cents < 0 %} owed to the customer
+        {%- else %} — settled{% endif %}
+      </span>
+    </dd>
+  </dl>
+
+  {% if ledger.is_truncated %}
+    <p class="notice notice--pending" role="status">
+      The most recent {{ ledger.rows | length }} entries are shown. The balance
+      above is the total over every entry, not just these.
+    </p>
+  {% endif %}
+
+  {% if ledger.is_empty %}
+    <p class="notice">No entries yet.</p>
+  {% else %}
+    <div class="ledger-scroll">
+      <table class="ledger">
+        <caption class="visually-hidden">
+          Ledger entries for {{ customer_name }}, oldest first, with the
+          running balance after each.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Type</th>
+            <th scope="col">Description</th>
+            <th scope="col" class="ledger__amount">Amount</th>
+            <th scope="col" class="ledger__running">Balance after</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if ledger.opening_balance_cents %}
+            <tr>
+              <td colspan="4">Balance before the entries shown</td>
+              <td class="ledger__running">
+                {{ ledger.opening_balance_cents | price }}
+              </td>
+            </tr>
+          {% endif %}
+          {% for row in ledger.rows %}
+            <tr>
+              <td>{{ row.entry.created_at | business_date }}</td>
+              <td>{{ row.type_label }}</td>
+              <td>
+                {{ row.entry.description }}
+                {#
+                  The direction in words as well as in the sign. A minus
+                  is one character, and 03-FRONTEND.md's rule against a
+                  distinction carried by colour alone is the same rule.
+                #}
+                <span class="ledger__direction">— {{ row.direction_label }}</span>
+              </td>
+              <td class="ledger__amount">{{ row.entry.amount_cents | price }}</td>
+              <td class="ledger__running">{{ row.balance_cents | price }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <h2 class="prep__heading">Add an entry</h2>
+  <form
+    class="form"
+    method="post"
+    action="{{ url_for('chef.add_ledger_entry', user_id=customer.id) }}"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form__field">
+      <label class="form__label" for="entry_type">Entry type</label>
+      <select class="filters__select" id="entry_type" name="entry_type" required>
+        {% for value, label in entry_types %}
+          <option
+            value="{{ value }}"
+            {% if value_of('entry_type') == value %}selected{% endif %}
+          >{{ label }}</option>
+        {% endfor %}
+      </select>
+      {#
+        A charge is not on this list. It is what checkout writes against
+        an order, and one typed in here would be money owed against
+        nothing (04-WORKFLOWS.md).
+      #}
+      <p class="form__hint">
+        A credit always reduces what the customer owes. A charge cannot be
+        added by hand — it is written when an order is placed.
+      </p>
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="amount">Amount (AUD)</label>
+      <input
+        class="form__input form__input--short" id="amount" name="amount"
+        type="text" inputmode="decimal" required
+        value="{{ value_of('amount') }}"
+      >
+      <p class="form__hint">
+        A positive number, like <code>14.50</code>. The direction is the next
+        question.
+      </p>
+    </div>
+
+    <fieldset class="form__fieldset">
+      <legend class="form__label">Direction, if this is an adjustment</legend>
+      <p class="form__hint">
+        Ignored for a credit, which always reduces the balance.
+      </p>
+      {% for value, label in directions.items() %}
+        <div class="form__choice">
+          <input
+            type="radio" id="direction-{{ value }}" name="direction"
+            value="{{ value }}"
+            {% if value_of('direction', 'owes_less') == value %}checked{% endif %}
+          >
+          <label for="direction-{{ value }}">{{ label }}</label>
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <div class="form__field">
+      <label class="form__label" for="description">What this is for</label>
+      <input
+        class="form__input" id="description" name="description" type="text"
+        required maxlength="{{ max_description }}"
+        value="{{ value_of('description') }}"
+      >
+      <p class="form__hint">
+        The only record of why the balance moved. Write it for somebody
+        reading this in a year.
+      </p>
+    </div>
+
+    <div class="form__actions">
+      <button class="btn" type="submit">Add entry</button>
+      <a class="btn btn--ghost" href="{{ url_for('chef.orders') }}">
+        Back to the order queue
+      </a>
+    </div>
+  </form>
+{% endblock %}
