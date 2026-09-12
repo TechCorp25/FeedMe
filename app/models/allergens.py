@@ -5,8 +5,11 @@ recorded in 01-DOMAIN.md. Controlled vocabulary only: there is no
 free-text allergen entry, and nothing in this module infers, defaults or
 derives a declaration.
 
-The enum must be re-verified against the current text of Standard 1.2.3
-before go-live; this file is a starting point, not a legal source.
+The enum was re-verified against the table to S9—3 of Schedule 9 on
+12 September 2026; the record, and the two discrepancies it found, are in
+01-DOMAIN.md under "Verification record". Neither is closed here, because
+closing either changes values that are frozen into
+`OrderLine.allergen_snapshot`. This file is still not a legal source.
 """
 
 from __future__ import annotations

@@ -115,6 +115,51 @@ Rules, enforced in code:
 
 > Verify the enum against the current text of FSANZ Standard 1.2.3 before go-live. The list above reflects the PEAL requirements but food standards are amended; treat this file as a starting point, not a legal source.
 
+### Verification record
+
+**Checked 12 September 2026.** Source: the table to section **S9—3** of
+*Australia New Zealand Food Standards Code — Schedule 9 — Mandatory advisory
+statements and declarations*, **compilation No. 2, in force 25 February 2021,
+up to Amendment 197** (F2021C00195), read from FSANZ's *Food Standards Code —
+Compilation (April 2026)* PDF. That is the PEAL amendment; its transition
+period ended 25 February 2024 and its stock-in-trade period ended
+25 February 2026, so it is in full force with no remaining concession.
+
+**Code changed as a result: none yet.** Two discrepancies were found and are
+recorded here rather than fixed, because closing either changes `AllergenCode`
+and that enum's values are frozen into `OrderLine.allergen_snapshot`.
+
+**Column 4 of the table** — the required name for a declaration made outside a
+statement of ingredients, which is what this application renders — gives *two*
+rows where `AllergenCode` has one:
+
+| Schedule 9 item | Declarable when | Required name (column 4) |
+|---|---|---|
+| 3 — wheat, and its hybridised strains | always, *irrespective of whether it contains gluten* | `wheat`; and `gluten` as well, if gluten is present |
+| 2 — barley, oats, rye, and their hybridised strains | only *if they contain gluten* | `gluten` |
+
+So:
+
+1. **`cereals_gluten` collapses two separate declarations.** It cannot express
+   wheat present without gluten — which item 3 requires be declared anyway —
+   and the name it renders is not one the table uses.
+2. **`spelt` is not a food in the table.** Spelt is of the genus *Triticum*, so
+   it is covered by item 3 and its required name is `wheat`.
+   `GlutenCereal.SPELT` therefore authorises a declaration the standard does
+   not have.
+
+Otherwise the vocabulary matches: the nine tree nut species are exactly the
+table's; crustacea, mollusc and fish are three separate rows, as this document
+already requires; and sulphites are declarable at 10 mg/kg or above. Two
+required names differ from the labels used here — `crustacean` rather than
+"Crustacea", and mollusc means a *marine* mollusc under S9—3(2)(c).
+
+**Proposed direction, not yet approved.** Add `WHEAT` and `GLUTEN`; keep
+`CEREALS_GLUTEN` and `SPELT` parseable but never writable and never offered by
+the allergen editor. Deleting them outright would break every historical order
+on read, and a snapshot is never rewritten — a declaration a customer was
+given is what they were given, whatever the vocabulary has since become.
+
 ## Publication
 
 There is **no `is_published` field.** Publication is derived, not stored:
