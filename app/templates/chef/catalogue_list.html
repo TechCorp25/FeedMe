@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{% set kind = listing.kind %}
+{% set plural_url = listing.plural_url %}
+{% set plural = 'Components' if kind == 'component' else 'Dishes' %}
+
+{#
+  One action, one form POST. Defined here rather than in the shared macros
+  file because nothing outside this page uses it.
+#}
+{% macro admin_action(action, label, include_archived, values={}, danger=false) %}
+  <form class="admin-action" method="post" action="{{ action }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for name, value in values.items() %}
+      <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    {% if include_archived %}
+      <input type="hidden" name="include_archived" value="1">
+    {% endif %}
+    <button
+      class="btn {{ 'btn--danger' if danger else 'btn--ghost' }}"
+      type="submit"
+    >{{ label }}</button>
+  </form>
+{% endmacro %}
+
+{% block title %}{{ plural }} — FeedMe{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.' ~ plural_url) }}
+
+  <p class="page__kicker">Chef</p>
+  <h1 class="page__title">{{ plural }}</h1>
+  <p class="page__lede">
+    {% if kind == 'component' %}
+      Dressings, sauces, purées, sides, proteins and bases, sold on their own.
+    {% else %}
+      Complete meals, priced whole. A dish may link the components it is made
+      from, for provenance and kitchen prep.
+    {% endif %}
+    An item reaches customers only once its allergen declaration has been
+    reviewed.
+  </p>
+
+  <p class="mt-6 flex flex-wrap gap-3">
+    <a class="btn" href="{{ url_for('chef.new_item', plural=plural_url) }}">
+      New {{ kind }}
+    </a>
+    {% if listing.include_archived %}
+      <a class="btn btn--ghost" href="{{ url_for('chef.' ~ plural_url) }}">
+        Hide archived
+      </a>
+    {% else %}
+      <a
+        class="btn btn--ghost"
+        href="{{ url_for('chef.' ~ plural_url, archived=1) }}"
+      >Show archived</a>
+    {% endif %}
+  </p>
+
+  {% if listing.is_empty %}
+    <p class="notice">
+      No {{ kind }}s yet.
+      <a href="{{ url_for('chef.new_item', plural=plural_url) }}">Create the first one.</a>
+    </p>
+  {% else %}
+    <ul class="admin-list">
+      {% for row in listing.rows %}
+        {% set item = row.item %}
+        <li class="admin-item">
+          <div class="admin-item__head">
+            <h2 class="admin-item__name">
+              <a href="{{ url_for('chef.edit_item', plural=plural_url, item_id=item.id) }}">
+                {{ item.name }}
+              </a>
+            </h2>
+            {#
+              The state is a word before it is a colour. `status-chip--*`
+              only tints a chip that already reads correctly, so the list
+              survives a monochrome screen (03-FRONTEND.md).
+            #}
+            <p>
+              <span class="status-chip status-chip--{{ row.status_key }}">
+                {{ row.status_label }}
+              </span>
+            </p>
+            <p class="admin-item__price">{{ item.price_cents | price }}</p>
+          </div>
+
+          <p class="admin-item__meta">
+            {{ item.slug }} — {{ item.unit_label }}
+            {%- if item.category %}, {{ item.category_label }}{% endif %}
+            {%- if item.ingredients %}, {{ item.ingredients | length }} ingredient{{ '' if item.ingredients | length == 1 else 's' }}{% endif %}
+          </p>
+
+          {#
+            Advisory, and it says so. 04-WORKFLOWS.md: editing ingredients
+            on a reviewed item prompts for re-review — it does not
+            invalidate the item and does not unpublish it.
+          #}
+          {% if item.allergen_review_is_stale %}
+            <p class="notice notice--pending" role="status">
+              The ingredients changed after this item's allergen declaration
+              was last reviewed. The declaration still stands; check whether
+              it is still right.
+            </p>
+          {% endif %}
+
+          <div class="admin-item__actions">
+            <a
+              class="btn btn--ghost"
+              href="{{ url_for('chef.edit_item', plural=plural_url, item_id=item.id) }}"
+            >Edit {{ item.name }}</a>
+
+            {#
+              Availability is offered only where it can succeed. An
+              unreviewed item says why instead of showing a button whose
+              only outcome is a refusal.
+            #}
+            {% if item.is_available %}
+              {{ admin_action(
+                   url_for('chef.set_availability', plural=plural_url, item_id=item.id),
+                   'Withdraw ' ~ item.name, listing.include_archived) }}
+            {% elif row.can_be_made_available %}
+              {{ admin_action(
+                   url_for('chef.set_availability', plural=plural_url, item_id=item.id),
+                   'Make ' ~ item.name ~ ' available', listing.include_archived,
+                   {'available': '1'}) }}
+            {% elif not item.is_archived %}
+              <p class="admin-item__blocked">
+                Review the allergen declaration before making this available.
+              </p>
+            {% endif %}
+
+            {% if item.is_archived %}
+              {{ admin_action(
+                   url_for('chef.set_archived', plural=plural_url, item_id=item.id),
+                   'Restore ' ~ item.name, listing.include_archived) }}
+            {% else %}
+              {{ admin_action(
+                   url_for('chef.set_archived', plural=plural_url, item_id=item.id),
+                   'Archive ' ~ item.name, listing.include_archived,
+                   {'archive': '1'}, danger=true) }}
+            {% endif %}
+
+            {% if not loop.first %}
+              {{ admin_action(
+                   url_for('chef.move_item', plural=plural_url, item_id=item.id),
+                   'Move ' ~ item.name ~ ' up', listing.include_archived,
+                   {'direction': 'up'}) }}
+            {% endif %}
+            {% if not loop.last %}
+              {{ admin_action(
+                   url_for('chef.move_item', plural=plural_url, item_id=item.id),
+                   'Move ' ~ item.name ~ ' down', listing.include_archived,
+                   {'direction': 'down'}) }}
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

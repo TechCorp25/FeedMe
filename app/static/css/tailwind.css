@@ -1232,6 +1232,89 @@
     @apply m-0 font-serif text-sm text-ink-muted;
   }
 
+  /* --- the catalogue editors ------------------------------------------ */
+
+  .admin-list {
+    @apply mt-8 flex list-none flex-col gap-0 border-t-2 border-ink p-0;
+  }
+
+  .admin-item {
+    @apply flex flex-col gap-3 border-b-2 border-ink py-5;
+  }
+
+  .admin-item__head {
+    @apply flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between
+           sm:gap-6;
+  }
+
+  .admin-item__name {
+    @apply m-0 font-display text-lg uppercase tracking-wide;
+  }
+
+  .admin-item__name a {
+    @apply text-ink underline decoration-line decoration-2 underline-offset-4
+           hover:decoration-ink;
+  }
+
+  .admin-item__price {
+    @apply m-0 font-display text-lg text-saffron;
+  }
+
+  .admin-item__meta {
+    @apply m-0 font-serif text-sm text-ink-muted;
+  }
+
+  /* Why a control is missing, said in words where the control would be. */
+  .admin-item__blocked {
+    @apply m-0 max-w-prose font-serif text-sm italic text-ink-muted;
+  }
+
+  .admin-item__actions {
+    @apply flex flex-wrap items-center gap-3;
+  }
+
+  .admin-action {
+    @apply m-0;
+  }
+
+  /* The item's state. The word is the state; the tint only marks a chip
+     that already reads correctly, so the list survives a monochrome
+     screen and a colour-vision deficiency (03-FRONTEND.md). */
+  .status-chip {
+    @apply inline-flex items-center border-2 border-ink bg-surface px-2 py-1
+           font-display text-xs uppercase tracking-widest text-ink;
+  }
+
+  /* Live to customers. */
+  .status-chip--available {
+    @apply border-success bg-success-soft text-success;
+  }
+
+  /* Reviewed, but the chef has not turned it on. */
+  .status-chip--draft {
+    @apply border-info bg-info-soft text-info;
+  }
+
+  /* Blocked by the compliance gate, not by a choice. */
+  .status-chip--unreviewed {
+    @apply border-stamp bg-stamp-soft text-stamp;
+  }
+
+  .status-chip--archived {
+    @apply border-ink-muted bg-sunken text-ink-muted;
+  }
+
+  /* One ingredient: four controls that belong together, wrapping rather
+     than overflowing on a phone. */
+  .row-group {
+    @apply mb-4 flex flex-col gap-3 border-l-2 border-line pl-4 sm:flex-row
+           sm:flex-wrap sm:items-end;
+  }
+
+  .row-group .form__field {
+    @apply min-w-0 flex-1 sm:min-w-[12rem];
+  }
+
   .site-footer {
     @apply mx-auto max-w-screen border-t-2 border-accent px-4 pb-8 pt-6
            font-serif text-sm text-ink-muted;

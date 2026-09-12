@@ -1,0 +1,466 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{#
+  Re-filling after a refusal. `submitted` is the rejected form, so nothing
+  the chef typed is lost to a round trip — this form is long enough that
+  losing it once costs an afternoon. When there is no rejected form, the
+  value comes from the stored item.
+#}
+{% macro value_of(name, stored) %}
+  {%- if submitted is defined -%}
+    {{ submitted.get(name, '') }}
+  {%- else -%}
+    {{ stored if stored is not none else '' }}
+  {%- endif -%}
+{% endmacro %}
+
+{% set is_new = item is none %}
+{% set plural_endpoint = 'chef.' ~ plural_url %}
+
+{% block title %}
+  {{ 'New ' ~ kind if is_new else item.name }} — FeedMe
+{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav(plural_endpoint) }}
+
+  <p class="page__kicker">
+    <a href="{{ url_for(plural_endpoint) }}">
+      {{ 'Components' if kind == 'component' else 'Dishes' }}
+    </a>
+  </p>
+  <h1 class="page__title">{{ 'New ' ~ kind if is_new else item.name }}</h1>
+
+  {#
+    Stated at the top, every time. The allergen declaration is a separate
+    step on purpose (04-WORKFLOWS.md): it is not a section of this form,
+    and nothing saved here touches it.
+  #}
+  <p class="notice">
+    Allergens are edited separately and are never changed by this form.
+    {% if is_new %}
+      Save this {{ kind }} first, then review its allergen declaration —
+      until that review exists it cannot be made available to customers.
+    {% elif not item.allergens.is_reviewed %}
+      This {{ kind }} has no allergen review yet, so it cannot be made
+      available to customers.
+    {% elif item.allergen_review_is_stale %}
+      Its ingredients changed after the declaration was last reviewed. The
+      declaration still stands; check whether it is still right.
+    {% endif %}
+  </p>
+
+  <form
+    class="form"
+    method="post"
+    action="{{ url_for('chef.save_item', plural=plural_url, item_id=item.id) if not is_new else url_for('chef.save_item', plural=plural_url) }}"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">The basics</legend>
+
+      <div class="form__field">
+        <label class="form__label" for="name">Name</label>
+        <input
+          class="form__input" id="name" name="name" type="text" required
+          maxlength="{{ limits.name }}"
+          value="{{ value_of('name', item.name if item) }}"
+        >
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="slug">Slug</label>
+        <input
+          class="form__input" id="slug" name="slug" type="text"
+          maxlength="{{ limits.name }}"
+          value="{{ value_of('slug', item.slug if item) }}"
+        >
+        <p class="form__hint">
+          The address customers see, like <code>harissa-rosa</code>. Leave it
+          blank on a new {{ kind }} and it is made from the name.
+          {% if not is_new %}
+            Changing it breaks any link anybody saved to this page.
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="summary">Summary</label>
+        <input
+          class="form__input" id="summary" name="summary" type="text"
+          maxlength="{{ limits.summary }}"
+          value="{{ value_of('summary', item.summary if item) }}"
+        >
+        <p class="form__hint">One line, shown on the catalogue card.</p>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="description">Description</label>
+        <textarea
+          class="form__input" id="description" name="description" rows="4"
+          maxlength="{{ limits.description }}"
+        >{{ value_of('description', item.description if item) }}</textarea>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="category">Category</label>
+        {% if kind == 'component' %}
+          <select class="filters__select" id="category" name="category">
+            {% for choice in categories %}
+              <option value="{{ choice.value }}" {{ 'selected' if choice.selected }}>
+                {{ choice.label }}
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input
+            class="form__input" id="category" name="category" type="text"
+            maxlength="{{ limits.name }}"
+            value="{{ value_of('category', item.category if item) }}"
+          >
+          <p class="form__hint">Your own wording — dishes have no fixed list.</p>
+        {% endif %}
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="price">Price (AUD)</label>
+        <input
+          class="form__input form__input--short" id="price" name="price"
+          type="text" inputmode="decimal" required
+          value="{{ value_of('price', price_value) }}"
+        >
+        <p class="form__hint">Like <code>14.50</code>. Stored in whole cents.</p>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="unit">Unit</label>
+        <select class="filters__select" id="unit" name="unit">
+          {% for choice in units %}
+            <option value="{{ choice.value }}" {{ 'selected' if choice.selected }}>
+              {{ choice.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {% if kind == 'dish' %}
+        <div class="form__field">
+          <label class="form__label" for="serves">Serves</label>
+          <input
+            class="form__input form__input--short" id="serves" name="serves"
+            type="number" min="1" max="99"
+            value="{{ value_of('serves', item.serves if item else 1) }}"
+          >
+        </div>
+      {% endif %}
+
+      <div class="form__field">
+        <label class="form__label" for="image_path">Image path</label>
+        <input
+          class="form__input" id="image_path" name="image_path" type="text"
+          maxlength="{{ limits.text }}"
+          value="{{ value_of('image_path', item.image_path if item) }}"
+        >
+        <p class="form__hint">A storage path, not a URL. Optional.</p>
+      </div>
+    </fieldset>
+
+    {# --- tab 1: ingredients --- #}
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Ingredients</legend>
+      <p class="form__hint">
+        Shown to customers in the order you write them — nothing is sorted.
+        Editing these on a reviewed {{ kind }} prompts you to check the
+        allergen declaration again; it does not withdraw the {{ kind }}.
+      </p>
+
+      {% set stored_ingredients = item.ingredients if item else [] %}
+      {% for index in range(stored_ingredients | length + blank_rows) %}
+        {% set existing = stored_ingredients[index] if index < stored_ingredients | length else none %}
+        <div class="row-group">
+          <div class="form__field">
+            <label class="form__label" for="ingredient-{{ index }}-name">
+              Ingredient {{ index + 1 }}
+            </label>
+            <input
+              class="form__input" type="text"
+              id="ingredient-{{ index }}-name"
+              name="ingredient-{{ index }}-name"
+              maxlength="{{ limits.text }}"
+              value="{{ value_of('ingredient-' ~ index ~ '-name', existing.name if existing) }}"
+            >
+          </div>
+          <div class="form__field">
+            <label class="form__label" for="ingredient-{{ index }}-quantity">
+              Quantity
+            </label>
+            <input
+              class="form__input" type="text"
+              id="ingredient-{{ index }}-quantity"
+              name="ingredient-{{ index }}-quantity"
+              maxlength="{{ limits.text }}"
+              value="{{ value_of('ingredient-' ~ index ~ '-quantity', existing.quantity if existing) }}"
+            >
+          </div>
+          <div class="form__field">
+            <label class="form__label" for="ingredient-{{ index }}-note">Note</label>
+            <input
+              class="form__input" type="text"
+              id="ingredient-{{ index }}-note"
+              name="ingredient-{{ index }}-note"
+              maxlength="{{ limits.text }}"
+              value="{{ value_of('ingredient-' ~ index ~ '-note', existing.note if existing) }}"
+            >
+          </div>
+          <div class="form__choice">
+            <input
+              type="checkbox" id="ingredient-{{ index }}-optional"
+              name="ingredient-{{ index }}-optional" value="1"
+              {{ 'checked' if existing and existing.is_optional }}
+            >
+            <label for="ingredient-{{ index }}-optional">Optional</label>
+          </div>
+        </div>
+      {% endfor %}
+      <p class="form__hint">
+        {{ blank_rows }} blank rows are offered each time. Save to get more.
+      </p>
+    </fieldset>
+
+    {# --- tab 3: storage --- #}
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Storage and shelf life</legend>
+      <p class="form__hint">
+        Leave the method blank if this {{ kind }} has no storage guidance.
+        The shelf life is what a customer's use-by is counted from.
+      </p>
+
+      <div class="form__field">
+        <label class="form__label" for="storage-method">Method</label>
+        <select class="filters__select" id="storage-method" name="storage-method">
+          <option value="">No storage guidance</option>
+          {% for choice in storage_methods %}
+            <option value="{{ choice.value }}" {{ 'selected' if choice.selected }}>
+              {{ choice.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="storage-temperature">Temperature</label>
+        <input
+          class="form__input form__input--short" id="storage-temperature"
+          type="text" name="storage-temperature" maxlength="60"
+          value="{{ value_of('storage-temperature', item.storage.temperature_c if item and item.storage) }}"
+        >
+        <p class="form__hint">Like <code>0-4</code> or <code>-18 or below</code>.</p>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="storage-shelf-life-days">
+          Shelf life (days)
+        </label>
+        <input
+          class="form__input form__input--short" id="storage-shelf-life-days"
+          type="number" min="0" max="3650" name="storage-shelf-life-days"
+          value="{{ value_of('storage-shelf-life-days', item.storage.shelf_life_days if item and item.storage) }}"
+        >
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="storage-shelf-life-note">
+          Shelf-life note
+        </label>
+        <input
+          class="form__input" id="storage-shelf-life-note" type="text"
+          name="storage-shelf-life-note" maxlength="{{ limits.text }}"
+          value="{{ value_of('storage-shelf-life-note', item.storage.shelf_life_note if item and item.storage) }}"
+        >
+        <p class="form__hint">Like <code>3 days once opened</code>.</p>
+      </div>
+
+      <div class="form__choice">
+        <input
+          type="checkbox" id="storage-freezable" name="storage-freezable" value="1"
+          {{ 'checked' if item and item.storage and item.storage.freezable }}
+        >
+        <label for="storage-freezable">Freezable</label>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="storage-freezer-life-days">
+          Freezer life (days)
+        </label>
+        <input
+          class="form__input form__input--short" id="storage-freezer-life-days"
+          type="number" min="0" max="3650" name="storage-freezer-life-days"
+          value="{{ value_of('storage-freezer-life-days', item.storage.freezer_life_days if item and item.storage) }}"
+        >
+      </div>
+    </fieldset>
+
+    {# --- tab 4: preparation --- #}
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Preparation</legend>
+
+      {% set stored_steps = item.preparation.steps if item and item.preparation else [] %}
+      {% for index in range(stored_steps | length + blank_rows) %}
+        <div class="form__field">
+          <label class="form__label" for="step-{{ index }}-text">
+            Step {{ index + 1 }}
+          </label>
+          <input
+            class="form__input" type="text" id="step-{{ index }}-text"
+            name="step-{{ index }}-text" maxlength="{{ limits.text }}"
+            value="{{ value_of('step-' ~ index ~ '-text', stored_steps[index] if index < stored_steps | length) }}"
+          >
+        </div>
+      {% endfor %}
+
+      <div class="form__field">
+        <label class="form__label" for="prep-reheat-method">Reheating</label>
+        <select
+          class="filters__select" id="prep-reheat-method" name="prep-reheat-method"
+        >
+          <option value="">Not stated</option>
+          {% for choice in reheat_methods %}
+            <option value="{{ choice.value }}" {{ 'selected' if choice.selected }}>
+              {{ choice.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="prep-reheat-minutes">Reheating minutes</label>
+        <input
+          class="form__input form__input--short" id="prep-reheat-minutes"
+          type="number" min="0" max="600" name="prep-reheat-minutes"
+          value="{{ value_of('prep-reheat-minutes', item.preparation.reheat_minutes if item and item.preparation) }}"
+        >
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="prep-reheat-note">Reheating note</label>
+        <input
+          class="form__input" id="prep-reheat-note" type="text"
+          name="prep-reheat-note" maxlength="{{ limits.text }}"
+          value="{{ value_of('prep-reheat-note', item.preparation.reheat_note if item and item.preparation) }}"
+        >
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="prep-serving-suggestion">
+          Serving suggestion
+        </label>
+        <input
+          class="form__input" id="prep-serving-suggestion" type="text"
+          name="prep-serving-suggestion" maxlength="{{ limits.text }}"
+          value="{{ value_of('prep-serving-suggestion', item.preparation.serving_suggestion if item and item.preparation) }}"
+        >
+      </div>
+    </fieldset>
+
+    {# --- taste metadata, deliberately not allergens --- #}
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Taste and preferences</legend>
+      <p class="form__hint">
+        Preference flags are taste data, never allergen data. They are shown
+        as pills beside the item and never inside its allergen tab.
+      </p>
+
+      <div class="filters__options">
+        {% for choice in preference_choices %}
+          <div class="form__choice">
+            <input
+              type="checkbox" id="preference-{{ choice.value }}"
+              name="preference" value="{{ choice.value }}"
+              {{ 'checked' if choice.selected }}
+            >
+            <label for="preference-{{ choice.value }}">{{ choice.label }}</label>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="preference-new">Add new flags</label>
+        <input
+          class="form__input" id="preference-new" name="preference-new" type="text"
+          maxlength="{{ limits.text }}"
+        >
+        <p class="form__hint">
+          Comma separated. New flags appear as filters once an item uses them.
+        </p>
+      </div>
+
+      <div class="form__field">
+        <label class="form__label" for="spice_level">Spice level (0–5)</label>
+        <input
+          class="form__input form__input--short" id="spice_level" name="spice_level"
+          type="number" min="0" max="5"
+          value="{{ value_of('spice_level', item.spice_level if item else 0) }}"
+        >
+      </div>
+    </fieldset>
+
+    {% if kind == 'dish' %}
+      <fieldset class="form__fieldset">
+        <legend class="filters__heading">Menus and components</legend>
+
+        <div class="filters__options">
+          {% if not meal_types %}
+            <p class="form__hint">No meal types exist yet.</p>
+          {% endif %}
+          {% for choice in meal_types %}
+            <div class="form__choice">
+              <input
+                type="checkbox" id="meal-type-{{ choice.value }}"
+                name="meal_type" value="{{ choice.value }}"
+                {{ 'checked' if choice.selected }}
+              >
+              <label for="meal-type-{{ choice.value }}">{{ choice.label }}</label>
+            </div>
+          {% endfor %}
+        </div>
+
+        {#
+          Provenance and kitchen prep only. A linked component never
+          substitutes for, merges into or overrides this dish's own four
+          tabs (01-DOMAIN.md) — the dish's declaration stays its own.
+        #}
+        <p class="form__hint">
+          Linked components show as provenance on the dish page and drive the
+          prep sheet. They never change this dish's own ingredients, allergens,
+          storage or preparation.
+        </p>
+        <div class="filters__options">
+          {% if not linkable_components %}
+            <p class="form__hint">No components exist yet.</p>
+          {% endif %}
+          {% for choice in linkable_components %}
+            <div class="form__choice">
+              <input
+                type="checkbox" id="component-ref-{{ choice.value }}"
+                name="component_ref" value="{{ choice.value }}"
+                {{ 'checked' if choice.selected }}
+              >
+              <label for="component-ref-{{ choice.value }}">{{ choice.label }}</label>
+            </div>
+          {% endfor %}
+        </div>
+      </fieldset>
+    {% endif %}
+
+    <div class="form__actions">
+      <button class="btn" type="submit">
+        {{ 'Create ' ~ kind if is_new else 'Save ' ~ item.name }}
+      </button>
+      <a class="btn btn--ghost" href="{{ url_for(plural_endpoint) }}">
+        Back to {{ 'components' if kind == 'component' else 'dishes' }}
+      </a>
+    </div>
+  </form>
+{% endblock %}

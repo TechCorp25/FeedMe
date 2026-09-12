@@ -22,6 +22,11 @@ module.exports = {
     'status-stamp--collected',
     'status-stamp--delivered',
     'status-stamp--cancelled',
+    // The catalogue editor composes `status-chip--{{ row.status_key }}`.
+    'status-chip--available',
+    'status-chip--draft',
+    'status-chip--unreviewed',
+    'status-chip--archived',
   ],
   darkMode: 'class',
   theme: {

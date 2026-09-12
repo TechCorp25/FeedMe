@@ -35,11 +35,7 @@ from app.db.repositories import components as components_repo
 from app.db.repositories import dishes as dishes_repo
 from app.db.repositories import orders as orders_repo
 from app.db.repositories import users as users_repo
-from app.models.catalogue import (
-    COMPONENT_CATEGORY_LABELS,
-    Component,
-    Dish,
-)
+from app.models.catalogue import Component, Dish
 from app.models.orders import ItemType, Order
 
 
@@ -97,7 +93,7 @@ class ComponentDemand:
     def category_label(self) -> str:
         if self.component is None:
             return "Not in the catalogue"
-        return COMPONENT_CATEGORY_LABELS[self.component.category]
+        return self.component.category_label
 
     @property
     def is_standalone_only(self) -> bool:

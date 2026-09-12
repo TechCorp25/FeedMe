@@ -18,7 +18,7 @@ from app.blueprints.chef import bp
 from app.db.repositories import orders as orders_repo
 from app.models.orders import OrderStatus
 from app.security.decorators import chef_required
-from app.services import chef_orders, prep_sheet
+from app.services import catalogue_admin, chef_orders, prep_sheet
 from app.services.dates import business_today
 
 
@@ -153,3 +153,161 @@ def prep(on: str) -> str:
         sheet=prep_sheet.build_sheet(sheet_date),
         today=business_today(),
     )
+
+
+# --- catalogue editors ------------------------------------------------------
+#
+# Both catalogues share one set of views. `components` and `dishes` are
+# separate catalogues with separate pages and separate ordering flows
+# (01-DOMAIN.md), and they stay separate in the URL and on the screen —
+# but the form machinery is the same shape, and writing it twice is how
+# the two drift into behaving differently.
+
+
+def _kind_or_404(plural: str) -> str:
+    """The catalogue a URL segment names, or 404.
+
+    The segment is the plural the customer-facing routes already use
+    (`/components`, `/dishes`), and it is mapped rather than derived:
+    "dish" + "s" is "dishs".
+    """
+    kind = catalogue_admin.KIND_BY_PLURAL.get(plural)
+    if kind is None:
+        abort(404)
+    return kind
+
+
+def _item_or_404(kind: str, item_id: str):
+    item = catalogue_admin.get_item(kind, item_id)
+    if item is None:
+        abort(404)
+    return item
+
+
+def _list_redirect(kind: str):
+    """Back to the list, still showing archived items if it was."""
+    arguments = {}
+    if request.form.get("include_archived"):
+        arguments["archived"] = "1"
+    return redirect(url_for(f"chef.{catalogue_admin.PLURAL[kind]}", **arguments))
+
+
+@bp.get("/components")
+@chef_required
+def components() -> str:
+    return _render_admin_list(catalogue_admin.COMPONENT)
+
+
+@bp.get("/dishes")
+@chef_required
+def dishes() -> str:
+    return _render_admin_list(catalogue_admin.DISH)
+
+
+def _render_admin_list(kind: str) -> str:
+    include_archived = bool(request.args.get("archived"))
+    return render_template(
+        "chef/catalogue_list.html",
+        listing=catalogue_admin.admin_list(kind, include_archived=include_archived),
+    )
+
+
+@bp.get("/<plural>/new")
+@chef_required
+def new_item(plural: str) -> str:
+    kind = _kind_or_404(plural)
+    return render_template(
+        "chef/catalogue_form.html", **catalogue_admin.form_context(kind, None)
+    )
+
+
+@bp.get("/<plural>/<item_id>/edit")
+@chef_required
+def edit_item(plural: str, item_id: str) -> str:
+    kind = _kind_or_404(plural)
+    item = _item_or_404(kind, item_id)
+    return render_template(
+        "chef/catalogue_form.html", **catalogue_admin.form_context(kind, item)
+    )
+
+
+@bp.post("/<plural>/save")
+@bp.post("/<plural>/<item_id>/save")
+@chef_required
+def save_item(plural: str, item_id: str | None = None):
+    """Create or update. A refusal re-renders the form, never a redirect.
+
+    Redirecting on a refusal would throw away everything the chef typed —
+    and this form is long enough that losing it once is losing an
+    afternoon.
+    """
+    kind = _kind_or_404(plural)
+    existing = _item_or_404(kind, item_id) if item_id else None
+
+    try:
+        item = catalogue_admin.save_item(kind, item_id, request.form)
+    except catalogue_admin.ItemFormError as error:
+        flash(str(error), "error")
+        context = catalogue_admin.form_context(kind, existing)
+        context["submitted"] = request.form
+        return render_template("chef/catalogue_form.html", **context), 400
+
+    flash(f"{item.name} is saved.", "success")
+    return redirect(url_for("chef.edit_item", plural=plural, item_id=item.id))
+
+
+@bp.post("/<plural>/<item_id>/availability")
+@chef_required
+def set_availability(plural: str, item_id: str):
+    """Toggle availability. Publication is gated on the allergen review."""
+    kind = _kind_or_404(plural)
+    item = _item_or_404(kind, item_id)
+    wanted = bool(request.form.get("available"))
+
+    try:
+        catalogue_admin.set_availability(kind, item, wanted)
+    except catalogue_admin.ItemFormError as error:
+        flash(str(error), "error")
+        return _list_redirect(kind)
+
+    flash(
+        f"{item.name} is {'available to customers' if wanted else 'no longer available'}.",
+        "success",
+    )
+    return _list_redirect(kind)
+
+
+@bp.post("/<plural>/<item_id>/archive")
+@chef_required
+def set_archived(plural: str, item_id: str):
+    """Archive or restore. Archived items never appear to customers."""
+    kind = _kind_or_404(plural)
+    item = _item_or_404(kind, item_id)
+    wanted = bool(request.form.get("archive"))
+
+    try:
+        catalogue_admin.set_archived(kind, item, wanted)
+    except catalogue_admin.ItemFormError as error:
+        flash(str(error), "error")
+        return _list_redirect(kind)
+
+    flash(
+        f"{item.name} is {'archived' if wanted else 'restored as a draft'}.",
+        "success",
+    )
+    return _list_redirect(kind)
+
+
+@bp.post("/<plural>/<item_id>/move")
+@chef_required
+def move_item(plural: str, item_id: str):
+    """Reorder by swapping with a neighbour."""
+    kind = _kind_or_404(plural)
+    item = _item_or_404(kind, item_id)
+
+    try:
+        catalogue_admin.move(kind, item, request.form.get("direction", ""))
+    except catalogue_admin.ItemFormError as error:
+        flash(str(error), "error")
+
+    return _list_redirect(kind)
