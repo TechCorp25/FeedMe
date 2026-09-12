@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from pymongo import ASCENDING
+from pymongo import ASCENDING, DESCENDING
+from pymongo.errors import DuplicateKeyError
 
 from app.db.client import get_db
+from app.models.base import utcnow
 from app.db.repositories._common import parse_many, parse_one, to_object_id
 from app.models.allergens import AllergenCode
 from app.models.catalogue import Component, ComponentCategory
@@ -119,7 +121,14 @@ def get_visible_component_by_slug(slug: str) -> Component | None:
 
 def chef_list_components(include_archived: bool = False) -> list[Component]:
     query: dict = {} if include_archived else {"is_archived": False}
-    cursor = get_db()[COLLECTION].find(query).sort("sort_order", ASCENDING)
+    # Name breaks the tie: `sort_order` defaults to 0 across a catalogue
+    # nobody has ordered yet, and an editor list that reshuffles between
+    # two loads is one the chef cannot use to reorder anything.
+    cursor = (
+        get_db()[COLLECTION]
+        .find(query)
+        .sort([("sort_order", ASCENDING), ("name", ASCENDING)])
+    )
     return parse_many(Component, cursor)
 
 
@@ -131,7 +140,10 @@ def chef_get_component(component_id: str) -> Component | None:
 
 
 def chef_create_component(component: Component) -> Component:
-    result = get_db()[COLLECTION].insert_one(component.to_mongo())
+    try:
+        result = get_db()[COLLECTION].insert_one(component.to_mongo())
+    except DuplicateKeyError as exc:
+        raise SlugTaken(component.slug) from exc
     return component.model_copy(update={"id": str(result.inserted_id)})
 
 
@@ -161,6 +173,59 @@ def chef_list_components_by_ids(ids: Sequence[str]) -> dict[str, Component]:
         str(document["_id"]): Component.model_validate(document)
         for document in cursor
     }
+
+
+
+class SlugTaken(ValueError):
+    """Raised when the unique index on `slug` refuses a write.
+
+    The index is what decides, not a prior read: two saves racing for one
+    slug would both pass a check made beforehand.
+    """
+
+
+def chef_update_component(component_id: str, fields: dict) -> bool:
+    """Write the editor's fields onto one component. True when it landed.
+
+    Only the fields the editor owns are `$set`. Deliberately never a
+    whole-document replace: `allergens` is written by the allergen editor
+    alone (01-DOMAIN.md), and a replace here would carry a stale copy of
+    it back over a review made in another tab.
+    """
+    object_id = to_object_id(component_id)
+    if object_id is None:
+        return False
+    try:
+        result = get_db()[COLLECTION].update_one(
+            {"_id": object_id}, {"$set": fields}
+        )
+    except DuplicateKeyError as exc:
+        raise SlugTaken(str(fields.get("slug", ""))) from exc
+    return result.matched_count == 1
+
+
+def chef_next_sort_order() -> int:
+    """One past the highest `sort_order` in the collection.
+
+    So a newly created item lands at the end of the chef's list rather
+    than sharing position 0 with everything else that was never ordered.
+    """
+    document = get_db()[COLLECTION].find_one(
+        {}, sort=[("sort_order", DESCENDING)], projection={"sort_order": 1}
+    )
+    return int(document.get("sort_order", 0)) + 1 if document else 0
+
+
+def chef_set_sort_order(component_id: str, sort_order: int) -> bool:
+    """Move one component in the chef's ordering."""
+    object_id = to_object_id(component_id)
+    if object_id is None:
+        return False
+    result = get_db()[COLLECTION].update_one(
+        {"_id": object_id},
+        {"$set": {"sort_order": sort_order, "updated_at": utcnow()}},
+    )
+    return result.matched_count == 1
 
 
 # --- cart scope: sees a withdrawn item, by id, so a line can still render ---

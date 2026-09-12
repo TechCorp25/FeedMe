@@ -8,6 +8,7 @@ merged with, or overridden by, a referenced component (01-DOMAIN.md).
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 
 from pydantic import Field, model_validator
@@ -177,13 +178,59 @@ class ItemBase(TimestampedModel):
     preference_flags: list[str] = Field(default_factory=list)
     spice_level: int = Field(default=0, ge=0, le=5)
 
+    #: When the ingredients were last edited. 04-WORKFLOWS.md requires
+    #: that editing ingredients on an already-reviewed item flags its
+    #: allergen block stale and prompts for re-review — without
+    #: invalidating the item and without unpublishing it.
+    #:
+    #: Deliberately a field on the item rather than a flag inside
+    #: `AllergenBlock`. 01-DOMAIN.md says allergen fields are never
+    #: modified by any code path except the chef allergen editor, and the
+    #: thing that makes a declaration stale is an edit made by the
+    #: *catalogue* editor. A boolean in the block would have the
+    #: catalogue form writing a compliance field on every save.
+    #:
+    #: Staleness is then derived rather than stored, so the two can never
+    #: disagree: a review is stale when the ingredients were edited after
+    #: it was made.
+    ingredients_updated_at: datetime | None = None
+
     @property
     def is_visible_to_customers(self) -> bool:
         return self.is_available and not self.is_archived
 
     @property
+    def allergen_review_is_stale(self) -> bool:
+        """True when the ingredients changed after the last review.
+
+        Advisory, exactly as 04-WORKFLOWS.md requires: it prompts, it
+        does not unpublish. An item with a stale review stays available
+        to customers and keeps rendering the declaration it was last
+        reviewed with — which is the true statement of what was last
+        checked — while the chef is told to look at it again.
+
+        An unreviewed item is never "stale": it is unreviewed, which is
+        a different state with different wording and a harder rule.
+        """
+        if not self.allergens.is_reviewed or self.ingredients_updated_at is None:
+            return False
+        return self.ingredients_updated_at > self.allergens.reviewed_at
+
+    @property
     def unit_label(self) -> str:
         return UNIT_LABELS[self.unit]
+
+    @property
+    def category_label(self) -> str:
+        """The category as words.
+
+        A dish's category is chef-defined free text and already reads as
+        words; a component's is an enum, and rendering it directly gives
+        a template `ComponentCategory.SAUCE`. Subclassed rather than
+        branched in Jinja so neither catalogue can render the other's
+        shape by accident.
+        """
+        return str(self.category)
 
     @property
     def spice_label(self) -> str:
@@ -211,6 +258,10 @@ class ItemBase(TimestampedModel):
 
 class Component(ItemBase):
     category: ComponentCategory = ComponentCategory.OTHER
+
+    @property
+    def category_label(self) -> str:
+        return COMPONENT_CATEGORY_LABELS[self.category]
 
 
 class Dish(ItemBase):
