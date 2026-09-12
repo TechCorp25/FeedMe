@@ -61,7 +61,19 @@ def _adopt_guest_cart(user: User, guest_cart: cart_service.Cart) -> None:
     Called with the cart read *before* `login_user`: once the request is
     authenticated the guest cart is no longer the current owner's, so it
     cannot be read back (04-WORKFLOWS.md).
+
+    Never for the chef. A cart is a customer's, and the chef signing in
+    on a browser that had been browsing the public catalogue would
+    otherwise adopt whatever was in it: the header would show a badge,
+    and `/checkout` — which asks only for a session — would place a real
+    order and write a real ledger charge against the administrative
+    account. The cart is dropped rather than merged, which is what
+    signing out already does to it.
     """
+    if user.is_chef_admin:
+        cart_service.clear_cart()
+        return
+
     overflowed = cart_service.merge_into_user_cart(user.get_id(), guest_cart)
     if overflowed:
         # Never dropped without saying so, here as anywhere else.

@@ -17,6 +17,23 @@ logger = logging.getLogger(__name__)
 INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
     "users": [
         ([("email", ASCENDING)], {"name": "email_unique", "unique": True}),
+        # "Exactly one `chef_admin` in normal operation" (01-DOMAIN.md),
+        # enforced by the database rather than by a check-then-insert.
+        # The provisioning script read the collection and then wrote, and
+        # two runs with different email addresses would both see no chef
+        # and both succeed — the unique index on `email` does not stop
+        # that, because the addresses differ. A partial unique index on
+        # the role does: it constrains only the documents that carry
+        # `chef_admin`, so every customer still shares `role: "customer"`
+        # freely.
+        (
+            [("role", ASCENDING)],
+            {
+                "name": "single_chef_admin",
+                "unique": True,
+                "partialFilterExpression": {"role": "chef_admin"},
+            },
+        ),
     ],
     "components": [
         ([("slug", ASCENDING)], {"name": "slug_unique", "unique": True}),

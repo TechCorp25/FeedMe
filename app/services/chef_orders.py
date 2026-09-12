@@ -57,6 +57,13 @@ TRANSITION_LABELS: dict[OrderStatus, str] = {
     OrderStatus.CANCELLED: "Cancel",
 }
 
+#: Every value stays selectable, `unpaid` included. 04-WORKFLOWS.md has
+#: the chef setting `settled` or `waived`, which is what they do in the
+#: ordinary case — but `payment_status` is a mutable tracking field, not
+#: an append-only record, and a settlement recorded by mistake has to be
+#: undoable. Restricting the control to the two forward values would make
+#: a mis-click permanent with no other way back. The form says what
+#: choosing `unpaid` means instead of hiding it.
 PAYMENT_STATUS_LABELS: dict[PaymentStatus, str] = {
     PaymentStatus.UNPAID: "Unpaid",
     PaymentStatus.SETTLED: "Settled",
@@ -270,8 +277,13 @@ def parse_filters(status: str | None, requested_for: str | None) -> QueueFilters
 
 def queue_view(filters: QueueFilters) -> QueueView:
     """The queue, with every order's customer and declaration attached."""
+    # One more than the page shows: the extra document is how the page
+    # knows it truncated, and asking for it is cheaper than reading the
+    # whole match to count.
     orders = orders_repo.chef_list_order_queue(
-        filters.status, requested_for=filters.requested_for
+        filters.status,
+        requested_for=filters.requested_for,
+        limit=QUEUE_LIMIT + 1,
     )
     truncated = len(orders) > QUEUE_LIMIT
     orders = orders[:QUEUE_LIMIT]
@@ -337,7 +349,7 @@ def apply_transition(
         # writes, and written after the transition for the same reason:
         # a credit that stood alone would tell a customer the kitchen
         # owed them for an order still being prepared.
-        append_cancellation_credit(moved)
+        append_cancellation_credit(moved, created_by=chef.id)
 
     return moved
 

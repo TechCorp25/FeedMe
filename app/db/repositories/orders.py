@@ -163,6 +163,7 @@ def chef_list_order_queue(
     status: OrderStatus | None = None,
     *,
     requested_for: date | None = None,
+    limit: int | None = None,
 ) -> list[Order]:
     """Non-terminal orders by requested date ascending, unless filtered.
 
@@ -182,12 +183,22 @@ def chef_list_order_queue(
     )
     if requested_for is not None:
         query["requested_for"] = as_mongo_date(requested_for)
-    return parse_many(
-        Order,
+
+    cursor = (
         get_db()[COLLECTION]
         .find(query)
-        .sort([("requested_for", ASCENDING), ("reference", ASCENDING)]),
+        .sort([("requested_for", ASCENDING), ("reference", ASCENDING)])
     )
+    if limit is not None:
+        # Bounded by the database, not by the caller slicing what it was
+        # already sent. A status filter naming a terminal state can match
+        # years of history, and every one of those documents would
+        # otherwise be sorted, transferred and parsed into a model —
+        # nested lines and allergen snapshots included — only to be
+        # dropped. The caller asks for one more than it will show and
+        # uses the extra to know it truncated.
+        cursor = cursor.limit(limit)
+    return parse_many(Order, cursor)
 
 
 def chef_apply_transition(order: Order, *, expected_status: OrderStatus) -> bool:

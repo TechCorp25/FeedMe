@@ -226,7 +226,9 @@
                   </select>
                   <p class="form__hint">
                     Currently {{ payment_statuses[order.payment_status] | lower }}.
-                    Nothing is charged — this records what was settled with you.
+                    Nothing is charged — this records what was settled with
+                    you. Choosing "unpaid" undoes a settlement recorded by
+                    mistake; it is a correction, not a refund.
                   </p>
                 </div>
                 <button class="btn btn--ghost" type="submit">

@@ -552,3 +552,160 @@ def test_every_queue_control_is_a_form_post(client, chef, placed):
     assert 'method="post"' in page
     assert page.count('name="csrf_token"') >= 2
     assert "onclick" not in page
+
+
+# --- findings from review, each with the test that failed before the fix ----
+
+
+def test_only_one_chef_admin_can_exist(app, db, chef):
+    """Enforced by the database, not by a read-then-write in a script.
+
+    Two provisioning runs with different addresses would both see no chef
+    and both insert; the unique index on `email` does not stop that,
+    because the addresses differ.
+    """
+    from pymongo.errors import DuplicateKeyError
+
+    second = User(
+        email="second-chef@example.com",
+        password_hash=hash_password(PASSWORD),
+        role=Role.CHEF_ADMIN,
+    )
+
+    with pytest.raises(DuplicateKeyError):
+        db["users"].insert_one(second.to_mongo())
+
+
+def test_customers_still_share_a_role_freely(app, db, chef):
+    """The constraint is partial: it binds `chef_admin` and nothing else."""
+    _register(app, "ada@example.com")
+    _register(app, "bob@example.com")
+
+    assert db["users"].count_documents({"role": Role.CUSTOMER.value}) == 2
+
+
+def test_the_queue_bounds_its_read_in_the_query(client, app, db, chef, labneh, monkeypatch):
+    """The limit is the database's, not a slice of what was already sent.
+
+    A status filter naming a terminal state can match years of history,
+    and every document would otherwise be sorted, transferred and parsed
+    into a model — nested lines and allergen snapshots included — only to
+    be thrown away.
+    """
+    monkeypatch.setattr(chef_orders, "QUEUE_LIMIT", 2)
+    _register(app, "ada@example.com", display_name="Ada")
+    _sign_in(client, "ada@example.com")
+    for _ in range(5):
+        _place_order(client, labneh)
+    client.post("/logout")
+
+    seen: list[int | None] = []
+    original = orders_repo.chef_list_order_queue
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("limit"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(orders_repo, "chef_list_order_queue", spy)
+
+    with app.app_context():
+        view = chef_orders.queue_view(chef_orders.QueueFilters())
+
+    # One more than the page shows, so truncation is known without
+    # reading the whole match.
+    assert seen == [3]
+    assert len(view.entries) == 2
+    assert view.is_truncated
+
+
+def test_a_chef_cancellation_is_credited_in_the_chefs_name(client, db, chef, placed):
+    """The audit record says who issued the credit, not who owns the order."""
+    _sign_in(client, "chef@example.com")
+    order_id = _order_id(db, placed)
+    chef_id = str(db["users"].find_one({"email": "chef@example.com"})["_id"])
+
+    client.post(
+        f"/chef/orders/{order_id}/transition",
+        data={"target": "cancelled", "chef_note": "Kitchen closed."},
+    )
+
+    credit = db["account_ledger"].find_one({"entry_type": "credit"})
+    assert credit["created_by"] == chef_id
+    # Still the customer's ledger; only the author differs.
+    assert credit["user_id"] != chef_id
+
+
+def test_a_customer_cancellation_is_still_credited_in_their_own_name(
+    client, app, db, chef, labneh
+):
+    _register(app, "ada@example.com", display_name="Ada")
+    _sign_in(client, "ada@example.com")
+    reference = _place_order(client, labneh)
+    customer_id = str(db["users"].find_one({"email": "ada@example.com"})["_id"])
+
+    client.post(f"/account/orders/{reference}/cancel")
+
+    credit = db["account_ledger"].find_one({"entry_type": "credit"})
+    assert credit["created_by"] == customer_id
+
+
+def test_the_chef_never_inherits_a_guest_cart(client, db, chef, labneh):
+    """A cart is a customer's.
+
+    Otherwise the chef signing in on a browser that had been browsing the
+    catalogue adopts whatever was in it — and `/checkout`, which asks
+    only for a session, would place a real order and write a real ledger
+    charge against the administrative account.
+    """
+    client.post(
+        "/cart/add",
+        data={"item_type": "component", "item_id": labneh, "quantity": "2"},
+    )
+
+    _sign_in(client, "chef@example.com")
+
+    page = client.get("/chef/orders").get_data(as_text=True)
+    assert re.search(r"data-cart-count[^>]*>0<", page)
+
+    # And nothing can be ordered in the chef's name.
+    client.post("/checkout", data={"requested_for": "2026-12-01", "fulfilment": "collection"})
+    chef_id = str(db["users"].find_one({"email": "chef@example.com"})["_id"])
+    assert db["orders"].count_documents({"user_id": chef_id}) == 0
+    assert db["account_ledger"].count_documents({"user_id": chef_id}) == 0
+
+
+def test_a_customer_still_keeps_their_guest_cart(client, app, db, labneh):
+    """The fix is scoped to the chef and changes nothing for a customer."""
+    _register(app, "ada@example.com", display_name="Ada")
+    client.post(
+        "/cart/add",
+        data={"item_type": "component", "item_id": labneh, "quantity": "2"},
+    )
+
+    _sign_in(client, "ada@example.com")
+
+    page = client.get("/components").get_data(as_text=True)
+    assert re.search(r"data-cart-count[^>]*>2<", page)
+
+
+def test_a_settlement_recorded_by_mistake_can_be_undone(client, db, chef, placed):
+    """`payment_status` is a mutable tracking field, not a ledger.
+
+    04-WORKFLOWS.md has the chef setting `settled` or `waived`, which is
+    the ordinary case — but a mis-click has to be correctable, and there
+    is no other way back.
+    """
+    _sign_in(client, "chef@example.com")
+    order_id = _order_id(db, placed)
+
+    client.post(f"/chef/orders/{order_id}/payment", data={"payment_status": "settled"})
+    client.post(f"/chef/orders/{order_id}/payment", data={"payment_status": "unpaid"})
+
+    assert db["orders"].find_one({"reference": placed})["payment_status"] == "unpaid"
+
+
+def test_the_form_says_what_choosing_unpaid_means(client, chef, placed):
+    _sign_in(client, "chef@example.com")
+    page = client.get("/chef/orders").get_data(as_text=True)
+
+    assert "it is a correction, not a refund" in page

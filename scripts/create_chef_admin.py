@@ -27,6 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pymongo.errors import DuplicateKeyError  # noqa: E402
+
 from app import create_app  # noqa: E402
 from app.config import load_config  # noqa: E402
 from app.db.client import get_db  # noqa: E402
@@ -60,8 +62,12 @@ def _read_password() -> str:
 
 
 def main() -> int:
-    # The index bootstrap is what makes `email` unique, so it runs: two
-    # people racing this script must not produce two accounts.
+    # The index bootstrap runs first, and it is what actually enforces
+    # both invariants: `email` is unique, and a partial unique index on
+    # `role` allows exactly one `chef_admin`. The read below is a
+    # courtesy that produces a readable message in the ordinary case; it
+    # is not what makes the rule hold. Two runs with different addresses
+    # would both pass it, and the second insert is refused by the index.
     app = create_app(load_config())
     with app.app_context():
         existing = get_db()["users"].find_one({"role": Role.CHEF_ADMIN.value})
@@ -83,14 +89,26 @@ def main() -> int:
             return 1
 
         password = _read_password()
-        user = users_repo.create_user(
-            User(
-                email=email,
-                password_hash=hash_password(password),
-                display_name="Chef",
-                role=Role.CHEF_ADMIN,
+        try:
+            user = users_repo.create_user(
+                User(
+                    email=email,
+                    password_hash=hash_password(password),
+                    display_name="Chef",
+                    role=Role.CHEF_ADMIN,
+                )
             )
-        )
+        except users_repo.EmailAlreadyRegistered:
+            print(f"{email} is already registered", file=sys.stderr)
+            return 1
+        except DuplicateKeyError:
+            # The partial unique index on `role` refused it: another run
+            # created the chef between the read above and this write.
+            print(
+                "a chef_admin already exists; 01-DOMAIN.md allows one",
+                file=sys.stderr,
+            )
+            return 1
 
     print(f"chef_admin created: {user.email}")
     print("Sign in at /login; the chef lands on /chef/orders.")

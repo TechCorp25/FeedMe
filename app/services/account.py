@@ -277,17 +277,22 @@ def cancel_order(user: User, order: Order) -> Order:
             "Check its status below."
         )
 
-    append_cancellation_credit(cancelled)
+    append_cancellation_credit(cancelled, created_by=user.id)
     return cancelled
 
 
-def append_cancellation_credit(order: Order) -> None:
+def append_cancellation_credit(order: Order, *, created_by: str) -> None:
     """The entry that offsets a cancelled order's charge.
 
     Public, and called by both cancellation paths: 04-WORKFLOWS.md gives
     the same rule to the customer cancelling from `placed` and to the
     chef cancelling from `prepping`, and a bookkeeping rule written twice
     is a rule that will drift.
+
+    `created_by` is required rather than derived from the order. It is
+    who *issued* the credit, not who the order belongs to, and defaulting
+    it to `order.user_id` made every chef-initiated cancellation claim in
+    the audit record that the customer had credited themselves.
 
     The charge was `+total_cents` (`services/checkout.py`); the credit is
     the same number negated, so a placed-then-cancelled order nets to
@@ -325,7 +330,7 @@ def append_cancellation_credit(order: Order) -> None:
                 entry_type=LedgerEntryType.CREDIT,
                 amount_cents=-order.total_cents,
                 description=f"Cancelled order {order.reference}",
-                created_by=order.user_id,
+                created_by=created_by,
             ),
         )
     except Exception:  # noqa: BLE001 — the cancellation stands; the entry is repairable
