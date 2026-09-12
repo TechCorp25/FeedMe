@@ -1,0 +1,142 @@
+{#
+  The chef area's own navigation and the pieces of an order the queue
+  renders. Kept beside the customer macros rather than inside them: a
+  chef page and a customer page show the same objects, but the chef is
+  the author of them and sees drafts, addresses and dietary notes the
+  customer pages never carry.
+
+  The nav lists only the pages that exist. Each slice of the chef area
+  adds its own entry as it lands, so this file never links to a route
+  that has not been built — `url_for` would fail the render, and a page
+  that 500s because a sibling page is missing is worse than a short nav.
+#}
+
+{% macro chef_nav(current) %}
+  <nav class="chef-nav" aria-label="Chef admin">
+    {% set pages = [
+      ('chef.orders', 'Order queue'),
+    ] %}
+    {% for endpoint, label in pages %}
+      <a
+        class="chef-nav__link {{ 'chef-nav__link--current' if endpoint == current else '' }}"
+        href="{{ url_for(endpoint) }}"
+        {% if endpoint == current %}aria-current="page"{% endif %}
+      >{{ label }}</a>
+    {% endfor %}
+  </nav>
+{% endmacro %}
+
+{#
+  An order's consolidated declaration: every allergen across every line,
+  rolled up once so the chef reads one list before touching a bench.
+
+  It follows the customer-facing rules even though its reader is the
+  person who wrote them — `contains` first, `may_contain` distinct and
+  labelled, never an abbreviation, never an icon without its text, and
+  never a preference flag. The chips differ by border style and wording
+  as well as by hue, so the summary survives the monochrome print the
+  prep sheet is going to be.
+#}
+{% macro order_allergen_summary(summary) %}
+  <section class="order-allergens" aria-label="Allergens across this order">
+    <h3 class="order-allergens__heading">Allergens across this order</h3>
+
+    {% if summary.has_unreviewed_line %}
+      <p class="notice notice--pending" role="status">
+        A line on this order was recorded without an allergen review. Check
+        the item before preparing it — this summary cannot be complete.
+      </p>
+    {% endif %}
+
+    {% if summary.declares_nothing and not summary.has_unreviewed_line %}
+      <p class="notice">No declared allergens on any line.</p>
+    {% else %}
+      {% if summary.contains_labels %}
+        <h4 class="allergens__heading">Contains</h4>
+        <ul class="chip-list">
+          {% for label in summary.contains_labels %}
+            <li class="chip chip--contains">{{ label }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if summary.may_contain_labels %}
+        <h4 class="allergens__heading">May contain — cross-contact risk</h4>
+        <ul class="chip-list">
+          {% for label in summary.may_contain_labels %}
+            <li class="chip chip--may">{{ label }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endif %}
+  </section>
+{% endmacro %}
+
+{#
+  One transition control. Each is its own form POST — no JavaScript, no
+  shared submit button whose meaning depends on a select the chef may not
+  have touched. The filter the queue was showing rides along in hidden
+  fields so the redirect lands back on the same list.
+
+  A cancellation from `prepping` or `ready` requires a chef_note
+  (04-WORKFLOWS.md), so that control renders its own labelled textarea
+  rather than a button that can only fail.
+#}
+{% macro transition_form(entry, choice, filters) %}
+  <form
+    class="queue-action"
+    method="post"
+    action="{{ url_for('chef.transition', order_id=entry.order.id) }}"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="target" value="{{ choice.target.value }}">
+    {{ filter_fields(filters) }}
+
+    {% if choice.is_cancellation %}
+      <div class="form__field">
+        <label
+          class="form__label"
+          for="note-{{ entry.order.id }}-{{ choice.target.value }}"
+        >Reason for cancelling{{ ' (required)' if choice.requires_note else ' (optional)' }}</label>
+        <textarea
+          class="form__input"
+          id="note-{{ entry.order.id }}-{{ choice.target.value }}"
+          name="chef_note"
+          rows="2"
+          maxlength="1000"
+          {% if choice.requires_note %}required{% endif %}
+        ></textarea>
+        <p class="form__hint">
+          {% if choice.requires_note %}
+            This order is already being prepared, so the customer is told why.
+          {% else %}
+            Shown to the customer on their order.
+          {% endif %}
+        </p>
+      </div>
+    {% endif %}
+
+    <button
+      class="btn {{ 'btn--danger' if choice.is_cancellation else 'btn--ghost' }}"
+      type="submit"
+    >{{ choice.label }} {{ entry.order.reference }}</button>
+  </form>
+{% endmacro %}
+
+{#
+  The queue's current filter, carried through every POST so a transition
+  applied from a filtered list redirects back to that list rather than to
+  the default queue.
+#}
+{% macro filter_fields(filters) %}
+  {% if filters.status %}
+    <input type="hidden" name="filter_status" value="{{ filters.status.value }}">
+  {% endif %}
+  {% if filters.requested_for %}
+    <input
+      type="hidden"
+      name="filter_requested_for"
+      value="{{ filters.requested_for.isoformat() }}"
+    >
+  {% endif %}
+{% endmacro %}

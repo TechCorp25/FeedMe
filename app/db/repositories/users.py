@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from pymongo.errors import DuplicateKeyError
@@ -118,3 +119,33 @@ def update_password_hash(user_id: str, password_hash: str) -> None:
         {"_id": object_id},
         {"$set": {"password_hash": password_hash, "updated_at": utcnow()}},
     )
+
+
+# --- chef scope: deliberately not the signed-in user ------------------------
+
+
+def chef_list_customers_by_ids(user_ids: Sequence[str]) -> dict[str, User]:
+    """The customers behind a set of orders, keyed by id.
+
+    Named `chef_*` because the caller is not the user being read. It is a
+    batch read rather than a lookup per order: the queue renders a name,
+    dietary notes and a delivery address for every order on the page, and
+    one query per order is how a working list becomes slow enough that
+    the chef stops using it.
+
+    Ids that are malformed or no longer resolve are simply absent from
+    the result. The queue renders the order without a customer rather
+    than failing the page — an order the kitchen has to cook does not
+    stop existing because the account behind it was removed.
+    """
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in set(user_ids))
+        if object_id is not None
+    ]
+    if not object_ids:
+        return {}
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}})
+    return {
+        str(document["_id"]): User.model_validate(document) for document in cursor
+    }

@@ -277,12 +277,17 @@ def cancel_order(user: User, order: Order) -> Order:
             "Check its status below."
         )
 
-    _append_credit(cancelled)
+    append_cancellation_credit(cancelled)
     return cancelled
 
 
-def _append_credit(order: Order) -> None:
-    """The entry that offsets the order's charge.
+def append_cancellation_credit(order: Order) -> None:
+    """The entry that offsets a cancelled order's charge.
+
+    Public, and called by both cancellation paths: 04-WORKFLOWS.md gives
+    the same rule to the customer cancelling from `placed` and to the
+    chef cancelling from `prepping`, and a bookkeeping rule written twice
+    is a rule that will drift.
 
     The charge was `+total_cents` (`services/checkout.py`); the credit is
     the same number negated, so a placed-then-cancelled order nets to

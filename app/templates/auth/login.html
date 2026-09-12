@@ -13,7 +13,15 @@
 
   <form class="form" method="post" action="{{ url_for('auth.login') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="next" value="{{ next_path }}">
+    {#
+      Only when a destination was actually asked for. A hidden field
+      prefilled with the default would state a `next` nobody chose, and a
+      stated `next` wins over the role — so the chef would post `/cart`
+      back and never reach the queue.
+    #}
+    {% if next_path %}
+      <input type="hidden" name="next" value="{{ next_path }}">
+    {% endif %}
 
     <div class="form__field">
       <label class="form__label" for="email">Email address</label>
@@ -43,7 +51,7 @@
 
     <div class="form__actions">
       <button class="btn" type="submit">Sign in</button>
-      <a class="btn btn--ghost" href="{{ url_for('auth.register', next=next_path) }}">
+      <a class="btn btn--ghost" href="{{ url_for('auth.register', next=next_path) if next_path else url_for('auth.register') }}">
         Create an account
       </a>
     </div>

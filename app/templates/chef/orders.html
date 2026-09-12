@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% import "macros/allergens.html" as allergen_macros %}
+{% import "macros/chef.html" as chef_macros %}
+
+{% block title %}Order queue — FeedMe{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.orders') }}
+
+  <p class="page__kicker">Chef</p>
+  <h1 class="page__title">Order queue</h1>
+  <p class="page__lede">
+    Outstanding orders, earliest requested date first. Every line shows the
+    allergen declaration the customer was given when they ordered — not the
+    catalogue as it stands now.
+  </p>
+
+  {#
+    A GET form: the queue is a readable, bookmarkable list, and filtering
+    it is not a mutation. It works with the keyboard and without any
+    script; the submit button is the only thing that applies it, so a
+    change of select never navigates under the chef.
+  #}
+  <form class="filters" method="get" action="{{ url_for('chef.orders') }}">
+    <h2 class="filters__heading">Filter the queue</h2>
+
+    <div class="filters__group">
+      <label class="filters__label" for="filter-status">Status</label>
+      <select class="filters__select" id="filter-status" name="status">
+        <option value="">Outstanding — everything not finished</option>
+        {% for status in statuses %}
+          <option
+            value="{{ status.value }}"
+            {% if view.filters.status == status %}selected{% endif %}
+          >{{ status.value | capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filters__group">
+      <label class="filters__label" for="filter-date">Requested for</label>
+      <input
+        class="filters__select"
+        id="filter-date"
+        name="requested_for"
+        type="date"
+        value="{{ view.filters.requested_for.isoformat() if view.filters.requested_for else '' }}"
+      >
+      <p class="filters__hint">The date the customer asked for, not the date they ordered.</p>
+    </div>
+
+    <div class="filters__actions">
+      <button class="btn" type="submit">Apply</button>
+      {% if view.filters.is_active %}
+        <a class="btn btn--ghost" href="{{ url_for('chef.orders') }}">
+          Clear — show everything outstanding
+        </a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if view.is_truncated %}
+    <p class="notice notice--pending" role="status">
+      Only the first {{ view.entries | length }} orders are shown. Narrow the
+      filter above to see the rest.
+    </p>
+  {% endif %}
+
+  {% if view.is_empty %}
+    <p class="notice">
+      {% if view.filters.is_active %}
+        No orders match that filter.
+      {% else %}
+        Nothing outstanding. Every order has been collected, delivered or
+        cancelled.
+      {% endif %}
+    </p>
+  {% else %}
+    <p class="catalogue__count">
+      {{ view.entries | length }} order{{ '' if view.entries | length == 1 else 's' }}
+    </p>
+
+    <ul class="queue">
+      {% for entry in view.entries %}
+        {% set order = entry.order %}
+        <li class="queue-order">
+          <div class="queue-order__head">
+            <h2 class="queue-order__reference">{{ order.reference }}</h2>
+            {#
+              The word is the status. The tint only marks a stamp that
+              already reads correctly, so the queue survives a monochrome
+              screen and a colour-vision deficiency (03-FRONTEND.md).
+            #}
+            <p>
+              <span class="status-stamp status-stamp--{{ order.status.value }}">
+                {{ order.status.value | capitalize }}
+              </span>
+            </p>
+            <p class="queue-order__amount">{{ order.total_cents | price }}</p>
+          </div>
+
+          <dl class="spec-list">
+            <dt>Customer</dt>
+            <dd>{{ entry.customer_name }}</dd>
+            {% if entry.customer and entry.customer.phone %}
+              <dt>Phone</dt>
+              <dd>{{ entry.customer.phone }}</dd>
+            {% endif %}
+            <dt>Requested for</dt>
+            <dd>
+              {% if order.requested_for %}
+                {{ order.requested_for | business_date }}
+              {% else %}
+                Not stated
+              {% endif %}
+            </dd>
+            <dt>Fulfilment</dt>
+            <dd>{{ order.fulfilment.value | capitalize }}</dd>
+            {% if entry.delivery_address %}
+              <dt>Deliver to</dt>
+              <dd>{{ entry.delivery_address }}</dd>
+            {% endif %}
+            <dt>Placed</dt>
+            <dd>{{ order.created_at | business_date }}</dd>
+            <dt>Items</dt>
+            <dd>{{ entry.item_count }}</dd>
+          </dl>
+
+          {#
+            Dietary notes are free text the customer wrote about their own
+            eating, not a compliance declaration — so they are set apart
+            from the allergen summary below and never rendered as a chip.
+          #}
+          {% if entry.dietary_notes %}
+            <section class="queue-order__notes" aria-label="Dietary notes from the customer">
+              <h3 class="queue-order__notes-heading">Dietary notes from the customer</h3>
+              <p class="tab-panel__note">{{ entry.dietary_notes }}</p>
+            </section>
+          {% endif %}
+
+          {% if order.customer_note %}
+            <section class="queue-order__notes" aria-label="Note with this order">
+              <h3 class="queue-order__notes-heading">Note with this order</h3>
+              <p class="tab-panel__note">{{ order.customer_note }}</p>
+            </section>
+          {% endif %}
+
+          {{ chef_macros.order_allergen_summary(entry.allergens) }}
+
+          <h3 class="queue-order__notes-heading">Lines</h3>
+          <ul class="order-lines">
+            {% for line in order.lines %}
+              <li class="order-line">
+                <div class="order-line__head">
+                  <h4 class="cart-line__name">
+                    {{ line.name_snapshot }}
+                    <span class="cart-line__unit">({{ line.item_type.value }})</span>
+                  </h4>
+                  <p class="cart-line__price">
+                    <span class="cart-line__amount">{{ line.unit_price_cents | price }}</span>
+                    <span class="cart-line__unit">× {{ line.quantity }}</span>
+                  </p>
+                  <p class="cart-line__total">{{ line.line_total_cents | price }}</p>
+                </div>
+                <div class="order-line__allergens">
+                  {{ allergen_macros.allergen_declaration(line.allergen_snapshot) }}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+
+          {% if order.chef_note %}
+            <section class="queue-order__notes" aria-label="Your note on this order">
+              <h3 class="queue-order__notes-heading">Your note on this order</h3>
+              <p class="tab-panel__note">{{ order.chef_note }}</p>
+            </section>
+          {% endif %}
+
+          <div class="queue-order__actions">
+            <section aria-label="Move order {{ order.reference }}">
+              <h3 class="queue-order__notes-heading">Move this order</h3>
+              {% if entry.transitions %}
+                <div class="queue-actions">
+                  {% for choice in entry.transitions %}
+                    {{ chef_macros.transition_form(entry, choice, view.filters) }}
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="tab-panel__note">
+                  This order is {{ order.status.value }} and cannot move again.
+                </p>
+              {% endif %}
+            </section>
+
+            {#
+              Payment is tracking, not capture: no provider is contacted
+              and no money moves. It sits in its own form because
+              04-WORKFLOWS.md moves `payment_status` independently of
+              `status` — an order can be settled while it is still being
+              prepared, and waived long after it was collected.
+            #}
+            <section aria-label="Payment for order {{ order.reference }}">
+              <h3 class="queue-order__notes-heading">Payment</h3>
+              <form
+                class="queue-action"
+                method="post"
+                action="{{ url_for('chef.payment', order_id=order.id) }}"
+              >
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {{ chef_macros.filter_fields(view.filters) }}
+                <div class="form__field">
+                  <label class="form__label" for="payment-{{ order.id }}">
+                    Recorded as
+                  </label>
+                  <select
+                    class="filters__select"
+                    id="payment-{{ order.id }}"
+                    name="payment_status"
+                  >
+                    {% for value, label in payment_statuses.items() %}
+                      <option
+                        value="{{ value.value }}"
+                        {% if order.payment_status == value %}selected{% endif %}
+                      >{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                  <p class="form__hint">
+                    Currently {{ payment_statuses[order.payment_status] | lower }}.
+                    Nothing is charged — this records what was settled with you.
+                  </p>
+                </div>
+                <button class="btn btn--ghost" type="submit">
+                  Save payment for {{ order.reference }}
+                </button>
+              </form>
+            </section>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

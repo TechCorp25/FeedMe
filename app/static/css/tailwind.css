@@ -203,9 +203,16 @@
     );
   }
 
+  /* Wraps rather than overflows. The row is brand, catalogue nav, cart,
+     account, sign-out and the theme toggle; signed in on a 390px phone
+     that is wider than the viewport, and an unwrapped flex row pushed the
+     last control past the edge and scrolled the whole page sideways. The
+     catalogue nav keeps its own horizontal scroller (`.site-nav`), so
+     what wraps here are whole controls, never a half-cut label. */
   .site-header__inner {
-    @apply mx-auto flex max-w-screen items-center justify-between gap-4 px-4
-           py-4 landscapeShort:py-2;
+    @apply mx-auto flex max-w-screen flex-wrap items-center justify-between
+           gap-x-4 gap-y-2 px-4 py-4 landscapeShort:flex-nowrap
+           landscapeShort:py-2;
     padding-left: max(1rem, env(safe-area-inset-left));
     padding-right: max(1rem, env(safe-area-inset-right));
   }
@@ -1059,6 +1066,84 @@
   .btn--danger {
     @apply border-danger bg-transparent text-danger hover:border-danger
            hover:bg-danger hover:text-surface;
+  }
+
+  /* --- the chef's order queue ----------------------------------------- */
+
+  /* The chef area's own navigation, drawn like the customer's account nav
+     so the two read as the same system. The current page is marked by an
+     underline and `aria-current`, never by colour alone. */
+  .chef-nav {
+    @apply mb-8 flex flex-wrap gap-x-6 gap-y-2 border-b-2 border-ink pb-3;
+  }
+
+  .chef-nav__link {
+    @apply font-display text-sm uppercase tracking-widest text-ink-muted
+           no-underline hover:text-ink;
+  }
+
+  .chef-nav__link--current {
+    @apply text-accent underline decoration-accent decoration-2
+           underline-offset-4;
+  }
+
+  .queue {
+    @apply mt-6 flex list-none flex-col gap-8 p-0;
+  }
+
+  /* One order is one bounded object, so it takes the 2px `ink` boundary
+     the system uses to identify a component — never the `line` hairline,
+     which is decorative and does not clear 3:1. */
+  .queue-order {
+    @apply flex flex-col gap-4 border-2 border-ink bg-surface p-4 sm:p-6;
+  }
+
+  .queue-order__head {
+    @apply flex flex-col gap-2 border-b-2 border-ink pb-3 sm:flex-row
+           sm:items-baseline sm:justify-between sm:gap-6;
+  }
+
+  .queue-order__reference {
+    @apply m-0 font-display text-lg uppercase tracking-wide text-ink;
+  }
+
+  /* What it costs, in the one hue that means that. */
+  .queue-order__amount {
+    @apply m-0 font-display text-lg text-saffron;
+  }
+
+  .queue-order__notes {
+    @apply flex flex-col gap-1 bg-sunken p-3;
+  }
+
+  .queue-order__notes-heading {
+    @apply m-0 font-display text-sm uppercase tracking-widest text-ink;
+  }
+
+  /* The rolled-up declaration. Set apart with the same stamped rule the
+     per-line snapshot carries, so a compliance surface always looks like
+     one wherever it appears. */
+  .order-allergens {
+    @apply flex flex-col gap-2 border-l-2 border-stamp bg-sunken p-3 pl-4;
+  }
+
+  .order-allergens__heading {
+    @apply m-0 font-display text-sm uppercase tracking-widest text-ink;
+  }
+
+  .queue-order__actions {
+    @apply flex flex-col gap-6 border-t-2 border-ink pt-4 lg:flex-row
+           lg:items-start lg:gap-10;
+  }
+
+  /* Each control is its own form, so they wrap rather than sitting in a
+     row that would overflow on a phone. */
+  .queue-actions {
+    @apply mt-2 flex flex-wrap items-end gap-4;
+  }
+
+  .queue-action {
+    @apply flex min-w-0 max-w-full flex-col gap-2;
   }
 
   .site-footer {
