@@ -22,15 +22,37 @@ from app.services import cart as cart_service
 from app.services import checkout as checkout_service
 
 
-def _next_destination() -> str:
+def _requested_next() -> str | None:
+    """The destination actually asked for, or None.
+
+    Deliberately distinct from `_next_destination`. The forms carry this
+    one in a hidden field, and a field prefilled with the *default*
+    destination would answer the question before the account is known:
+    the chef would post `/cart` back to the server and land there, every
+    time, because a stated `next` wins over the role.
+    """
+    return safe_path(request.values.get("next"))
+
+
+def _next_destination(user: User | None = None) -> str:
     """Where to land after signing in.
 
     The value arrives from a query string or a hidden field, so it is
-    filtered to a same-site path; anything else falls back to the cart,
-    which is where a customer interrupted by a sign-in was heading.
+    filtered to a same-site path; anything else falls back to where the
+    person signing in was heading anyway — the cart for a customer, the
+    order queue for the chef, who does not have one.
+
+    `user` is passed on the POST path because `current_user` is only the
+    signed-in user *after* `login_user`, and the redirect is built from
+    the account that just authenticated rather than the one that did.
     """
-    candidate = safe_path(request.values.get("next"))
-    return candidate or url_for("order.cart")
+    candidate = _requested_next()
+    if candidate:
+        return candidate
+    subject = current_user if user is None else user
+    if getattr(subject, "is_chef_admin", False):
+        return url_for("chef.orders")
+    return url_for("order.cart")
 
 
 def _adopt_guest_cart(user: User, guest_cart: cart_service.Cart) -> None:
@@ -39,7 +61,19 @@ def _adopt_guest_cart(user: User, guest_cart: cart_service.Cart) -> None:
     Called with the cart read *before* `login_user`: once the request is
     authenticated the guest cart is no longer the current owner's, so it
     cannot be read back (04-WORKFLOWS.md).
+
+    Never for the chef. A cart is a customer's, and the chef signing in
+    on a browser that had been browsing the public catalogue would
+    otherwise adopt whatever was in it: the header would show a badge,
+    and `/checkout` — which asks only for a session — would place a real
+    order and write a real ledger charge against the administrative
+    account. The cart is dropped rather than merged, which is what
+    signing out already does to it.
     """
+    if user.is_chef_admin:
+        cart_service.clear_cart()
+        return
+
     overflowed = cart_service.merge_into_user_cart(user.get_id(), guest_cart)
     if overflowed:
         # Never dropped without saying so, here as anywhere else.
@@ -59,7 +93,7 @@ def login():
         return redirect(_next_destination())
 
     if request.method == "GET":
-        return render_template("auth/login.html", next_path=_next_destination())
+        return render_template("auth/login.html", next_path=_requested_next())
 
     guest_cart = cart_service.load_cart()
     user = accounts.authenticate(
@@ -73,7 +107,7 @@ def login():
         return (
             render_template(
                 "auth/login.html",
-                next_path=_next_destination(),
+                next_path=_requested_next(),
                 email=request.form.get("email", ""),
             ),
             401,
@@ -82,7 +116,7 @@ def login():
     login_user(user)
     _adopt_guest_cart(user, guest_cart)
     flash(f"Signed in as {user.email}.", "success")
-    return redirect(_next_destination())
+    return redirect(_next_destination(user))
 
 
 @bp.route("/register", methods=["GET", "POST"])
@@ -95,7 +129,7 @@ def register():
     if request.method == "GET":
         return render_template(
             "auth/register.html",
-            next_path=_next_destination(),
+            next_path=_requested_next(),
             min_password_length=accounts.MIN_PASSWORD_LENGTH,
         )
 
@@ -112,7 +146,7 @@ def register():
         return (
             render_template(
                 "auth/register.html",
-                next_path=_next_destination(),
+                next_path=_requested_next(),
                 min_password_length=accounts.MIN_PASSWORD_LENGTH,
                 email=request.form.get("email", ""),
                 display_name=request.form.get("display_name", ""),

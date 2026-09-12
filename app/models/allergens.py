@@ -11,6 +11,7 @@ before go-live; this file is a starting point, not a legal source.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from enum import Enum
 
@@ -94,6 +95,37 @@ TREE_NUT_LABELS: dict[TreeNutSpecies, str] = {
 }
 
 
+def declaration_labels(
+    codes: Iterable[AllergenCode],
+    *,
+    gluten_cereals: Iterable[GlutenCereal] = (),
+    tree_nut_species: Iterable[TreeNutSpecies] = (),
+) -> list[str]:
+    """Display strings for a set of declared allergens, species inline.
+
+    03-FRONTEND.md requires the gluten cereals and the tree nut species to
+    read inside their own chip and forbids abbreviating an allergen name.
+    The wording is built here rather than in Jinja so it stays under test,
+    and it is a module function rather than only a property because the
+    chef's order queue renders the same declaration rolled up across an
+    order's lines — one compliance string, written once.
+    """
+    detail = {
+        AllergenCode.CEREALS_GLUTEN: [
+            GLUTEN_CEREAL_LABELS[cereal] for cereal in gluten_cereals
+        ],
+        AllergenCode.TREE_NUTS: [
+            TREE_NUT_LABELS[species] for species in tree_nut_species
+        ],
+    }
+    labels = []
+    for code in codes:
+        named = detail.get(code)
+        label = ALLERGEN_LABELS[code]
+        labels.append(f"{label} ({', '.join(named)})" if named else label)
+    return labels
+
+
 class AllergenBlock(EmbeddedModel):
     """One item's allergen declaration.
 
@@ -116,27 +148,12 @@ class AllergenBlock(EmbeddedModel):
 
     @property
     def contains_labels(self) -> list[str]:
-        """Display strings for `contains`, species named inline.
-
-        03-FRONTEND.md requires the gluten cereals and tree nut species to
-        read inside their own chip, and forbids abbreviating an allergen
-        name. Building the string here rather than in Jinja keeps the
-        compliance wording under test.
-        """
-        detail = {
-            AllergenCode.CEREALS_GLUTEN: [
-                GLUTEN_CEREAL_LABELS[cereal] for cereal in self.gluten_cereals
-            ],
-            AllergenCode.TREE_NUTS: [
-                TREE_NUT_LABELS[species] for species in self.tree_nut_species
-            ],
-        }
-        labels = []
-        for code in self.contains:
-            named = detail.get(code)
-            label = ALLERGEN_LABELS[code]
-            labels.append(f"{label} ({', '.join(named)})" if named else label)
-        return labels
+        """Display strings for `contains`, species named inline."""
+        return declaration_labels(
+            self.contains,
+            gluten_cereals=self.gluten_cereals,
+            tree_nut_species=self.tree_nut_species,
+        )
 
     @property
     def sulphites_threshold_note(self) -> str | None:

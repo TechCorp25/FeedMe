@@ -18,19 +18,30 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _encode_dates(value: Any) -> Any:
-    """Widen a plain `date` to UTC midnight on the way into MongoDB.
+def as_mongo_date(value: date) -> datetime:
+    """The instant a plain `date` is stored as: UTC midnight.
 
     BSON has one temporal type and it is a datetime; a `date` is not
     encodable and the driver raises on it. A field the domain calls a
     date — `requested_for` — is therefore stored at midnight UTC and read
     back as a date, because Pydantic narrows a midnight datetime to one.
+
+    Public because a query has to agree with the write: a repository
+    filtering `requested_for` on a date has to name the same instant this
+    produced, and re-deriving it at the call site is how the two drift.
+    """
+    return datetime.combine(value, time.min, tzinfo=timezone.utc)
+
+
+def _encode_dates(value: Any) -> Any:
+    """Widen every plain `date` in a document on the way into MongoDB.
+
     Done here rather than at a call site so no repository can forget it.
     """
     if isinstance(value, datetime):
         return value
     if isinstance(value, date):
-        return datetime.combine(value, time.min, tzinfo=timezone.utc)
+        return as_mongo_date(value)
     if isinstance(value, dict):
         return {key: _encode_dates(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
