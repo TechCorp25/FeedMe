@@ -75,10 +75,42 @@ TEXT_PAIRS = (
 CONTRAST_FLOOR = 4.5
 
 
+def _without_at_rules(css: str) -> str:
+    """The stylesheet with every `@media` block removed.
+
+    These tests are about the palette the *screen* gets. The print
+    stylesheet redefines the same tokens under `:root, .dark` so a sheet
+    printed from the dark theme is not pale cream on white paper, and a
+    naive search for `.dark {` finds that block too — today only because
+    the screen block happens to come first in the file. Order is not an
+    invariant, and a contrast suite that quietly starts asserting about
+    the print palette would pass while testing nothing.
+    """
+    out = []
+    index = 0
+    while index < len(css):
+        at = css.find("@media", index)
+        if at == -1:
+            out.append(css[index:])
+            break
+        out.append(css[index:at])
+        brace = css.find("{", at)
+        if brace == -1:
+            break
+        depth, cursor = 1, brace + 1
+        while cursor < len(css) and depth:
+            depth += (css[cursor] == "{") - (css[cursor] == "}")
+            cursor += 1
+        index = cursor
+    return "".join(out)
+
+
 def _token_block(css: str, selector: str) -> dict[str, tuple[int, int, int]]:
     """The `--color-*` custom properties declared in one selector's block."""
     match = re.search(
-        re.escape(selector) + r"\s*\{(.*?)\}", strip_comments(css), re.S
+        re.escape(selector) + r"\s*\{(.*?)\}",
+        _without_at_rules(strip_comments(css)),
+        re.S,
     )
     assert match is not None, f"{selector} declares no block"
     return {

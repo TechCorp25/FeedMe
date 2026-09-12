@@ -1146,9 +1146,161 @@
     @apply flex min-w-0 max-w-full flex-col gap-2;
   }
 
+  /* --- the prep sheet ------------------------------------------------- */
+
+  /* Printed, so nothing here depends on colour: the two tables are ruled
+     in `ink`, the counts are set in the condensed display face at a size
+     that reads across a bench, and every flag is a word rather than a
+     tint (04-WORKFLOWS.md, 03-FRONTEND.md). */
+  .prep__heading {
+    @apply mt-10 border-b-2 border-ink pb-2 font-display text-xl uppercase
+           tracking-wide text-ink;
+  }
+
+  /* A table is one of the three things 03-FRONTEND.md lets scroll
+     sideways, and only inside its own container — the page body never
+     does. */
+  .prep-scroll {
+    @apply mt-4 overflow-x-auto;
+  }
+
+  .prep {
+    @apply w-full border-collapse text-left font-serif text-sm;
+  }
+
+  .prep th,
+  .prep td {
+    @apply border-b-2 border-line px-3 py-3 align-top;
+  }
+
+  .prep thead th {
+    @apply border-b-2 border-ink bg-sunken font-display text-xs uppercase
+           tracking-widest text-ink;
+  }
+
+  .prep__name {
+    @apply font-display text-base uppercase tracking-wide text-ink;
+  }
+
+  /* The number the kitchen is actually reading. */
+  .prep__count {
+    @apply whitespace-nowrap font-display text-lg text-ink;
+  }
+
+  .prep__unit {
+    @apply font-serif text-xs text-ink-muted;
+  }
+
+  /* A caveat on a row, in words. Never a colour on its own. */
+  .prep__flag {
+    @apply font-serif text-xs italic text-ink-muted;
+  }
+
+  .prep__for {
+    @apply m-0 list-none p-0 font-serif text-sm text-ink;
+  }
+
+  .prep-orders {
+    @apply mt-4 flex list-none flex-col gap-0 border-t-2 border-ink p-0;
+  }
+
+  .prep-order {
+    @apply flex flex-col gap-1 border-b-2 border-ink py-3;
+  }
+
+  .prep-order__reference {
+    @apply m-0 font-display text-base uppercase tracking-wide text-ink;
+  }
+
+  .prep-order__status {
+    @apply font-serif text-sm normal-case tracking-normal text-ink-muted;
+  }
+
+  .prep-order__lines {
+    @apply m-0 list-none p-0 font-serif text-sm text-ink;
+  }
+
+  /* The one thing on this page that must not be skimmed past. A heavy
+     rule and the words "Dietary notes" carry it, so it survives the
+     monochrome print the sheet is designed for. */
+  .prep-order__dietary {
+    @apply m-0 border-l-4 border-ink bg-sunken px-3 py-2 font-serif text-sm
+           text-ink;
+  }
+
+  .prep-order__note {
+    @apply m-0 font-serif text-sm text-ink-muted;
+  }
+
   .site-footer {
     @apply mx-auto max-w-screen border-t-2 border-accent px-4 pb-8 pt-6
            font-serif text-sm text-ink-muted;
     padding-bottom: max(2rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* The prep sheet is printed. Drop the site chrome, flatten the palette to
+   ink on white so a colour laser and a monochrome laser produce the same
+   page, and never let a table break across a page mid-row. */
+@media print {
+  .site-header,
+  .site-footer,
+  .skip-link,
+  .flashes {
+    display: none !important;
+  }
+
+  .page {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  /* Paper is white, so the palette is redefined at the token rather than
+     overridden at each element. Two reasons this is the only correct
+     place. The kraft ground costs a page of toner and lowers the
+     contrast of the thing being read. And the dark theme, printed, put
+     pale cream text on the white the printer supplies — every utility
+     carrying `text-ink` kept its dark-theme value, so a body-level
+     `color` override reached nothing and the sheet came out blank to
+     read. Resetting the tokens under `.dark` as well as `:root` fixes
+     both at once, and every utility follows without being listed.
+
+     The three grounds flatten to white; the hues keep their light-theme
+     values so `stamp` still prints as the allergen ink. The chips'
+     solid-versus-dashed distinction is drawn by border *style*
+     (03-FRONTEND.md), so it survives a monochrome printer regardless. */
+  :root,
+  .dark {
+    color-scheme: light;
+    --color-ground: 255 255 255;
+    --color-surface: 255 255 255;
+    --color-sunken: 255 255 255;
+    --color-ink: 0 0 0;
+    --color-ink-muted: 64 58 48;
+    --color-line: 128 118 100;
+    --color-accent: 20 76 53;
+    --color-accent-ink: 255 255 255;
+    --color-accent-soft: 255 255 255;
+    --color-saffron: 110 66 0;
+    --color-saffron-soft: 255 255 255;
+    --color-berry: 98 34 64;
+    --color-berry-soft: 255 255 255;
+    --color-stamp: 112 38 24;
+    --color-stamp-soft: 255 255 255;
+    --color-success: 22 86 46;
+    --color-success-soft: 255 255 255;
+    --color-danger: 130 26 21;
+    --color-danger-soft: 255 255 255;
+    --color-info: 21 63 111;
+    --color-info-soft: 255 255 255;
+  }
+
+  .prep tbody tr,
+  .prep-order {
+    break-inside: avoid;
+  }
+
+  .prep thead {
+    display: table-header-group;
   }
 }

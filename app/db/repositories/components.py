@@ -134,6 +134,35 @@ def chef_create_component(component: Component) -> Component:
     result = get_db()[COLLECTION].insert_one(component.to_mongo())
     return component.model_copy(update={"id": str(result.inserted_id)})
 
+
+
+def chef_list_components_by_ids(ids: Sequence[str]) -> dict[str, Component]:
+    """Components by id for the chef, keyed by id, whatever their visibility.
+
+    The prep sheet's read. Named `chef_*` because it deliberately sees
+    what a customer read would refuse — an archived or withdrawn component
+    can still be on an order placed before it was withdrawn, and the
+    kitchen has to make it.
+
+    Ids that are malformed or no longer resolve are simply absent. The
+    sheet names the line from its own snapshot in that case rather than
+    dropping it, because a line the chef cannot see is a portion that
+    does not get cooked.
+    """
+    object_ids = [
+        object_id
+        for object_id in (to_object_id(value) for value in set(ids))
+        if object_id is not None
+    ]
+    if not object_ids:
+        return {}
+    cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}})
+    return {
+        str(document["_id"]): Component.model_validate(document)
+        for document in cursor
+    }
+
+
 # --- cart scope: sees a withdrawn item, by id, so a line can still render ---
 
 

@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{% block title %}Prep sheet — {{ sheet.on | business_date }} — FeedMe{% endblock %}
+
+{% block content %}
+  {#
+    Screen chrome. `print:hidden` drops it from the printed sheet, which
+    is what 04-WORKFLOWS.md asks for: a plain layout the kitchen can put
+    on a bench, with nothing on it that only works on a screen.
+  #}
+  <div class="print:hidden">
+    {{ chef_macros.chef_nav('chef.prep_today') }}
+  </div>
+
+  <p class="page__kicker">Chef</p>
+  <h1 class="page__title">Prep sheet — {{ sheet.on | business_date }}</h1>
+
+  <p class="page__lede">
+    {% if sheet.is_empty %}
+      No orders stand for this date.
+    {% else %}
+      {{ sheet.order_count }} order{{ '' if sheet.order_count == 1 else 's' }},
+      {{ sheet.portion_count }} item{{ '' if sheet.portion_count == 1 else 's' }}.
+      Cancelled orders are not included.
+    {% endif %}
+  </p>
+
+  {#
+    A GET form: choosing a day is navigation, not a mutation, and it
+    works without any script.
+  #}
+  <form
+    class="filters print:hidden"
+    method="get"
+    action="{{ url_for('chef.prep_today') }}"
+  >
+    <h2 class="filters__heading">Another day</h2>
+    <div class="filters__group">
+      <label class="filters__label" for="prep-date">Date</label>
+      {#
+        Submitted as `?on=`, which `chef.prep_today` turns into the path
+        segment. A GET form cannot fill a path segment on its own, and
+        keeping the date in the path is what makes a sheet linkable and
+        printable with its date in the URL.
+      #}
+      <input
+        class="filters__select"
+        id="prep-date"
+        name="on"
+        type="date"
+        value="{{ sheet.on.isoformat() }}"
+        required
+      >
+    </div>
+    <div class="filters__actions">
+      <button class="btn" type="submit">Show that day</button>
+      {% if sheet.on != today %}
+        <a class="btn btn--ghost" href="{{ url_for('chef.prep_today') }}">Back to today</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if sheet.is_empty %}
+    <p class="notice print:hidden">
+      Nothing to prepare for {{ sheet.on | business_date }}.
+    </p>
+  {% else %}
+
+    {#
+      Dishes first: they are the thing a customer is handed, and the
+      components below are what goes into them.
+    #}
+    <section aria-labelledby="prep-dishes">
+      <h2 class="prep__heading" id="prep-dishes">Dishes to make</h2>
+      {% if not sheet.dishes %}
+        <p class="notice">No dishes on this day — components only.</p>
+      {% else %}
+        <div class="prep-scroll">
+          <table class="prep">
+            <caption class="visually-hidden">
+              Dishes ordered for {{ sheet.on | business_date }}, with the number
+              of portions of each.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Dish</th>
+                <th scope="col" class="prep__count">Portions</th>
+                <th scope="col">Serves</th>
+                <th scope="col">Made from</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for demand in sheet.dishes %}
+                <tr>
+                  <th scope="row" class="prep__name">
+                    {{ demand.name }}
+                    {% if demand.is_missing %}
+                      <span class="prep__flag">
+                        — no longer in the catalogue; named from the order
+                      </span>
+                    {% endif %}
+                  </th>
+                  <td class="prep__count">{{ demand.portions }}</td>
+                  <td>{{ demand.serves if demand.serves else '—' }}</td>
+                  <td>
+                    {% if demand.references %}
+                      {{ demand.references | map(attribute='name') | join(', ') }}
+                    {% else %}
+                      <span class="prep__flag">No components linked</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+
+    <section aria-labelledby="prep-components">
+      <h2 class="prep__heading" id="prep-components">Components to make</h2>
+      <p class="page__note">
+        {#
+          Said plainly rather than hidden in a total. `component_refs`
+          carries no quantity, so there is no honest sum of "four portions
+          of the tagine" and "two 250ml jars ordered on their own" — the
+          two are counted separately and both are true. An invented total
+          on a kitchen's pick list is worse than two real figures.
+        #}
+        Units ordered on their own are counted in the component's own unit.
+        Dish portions are counted separately, because a linked component
+        carries no per-dish quantity — the two columns are not added
+        together.
+      </p>
+      {% if not sheet.components %}
+        <p class="notice">No components on this day.</p>
+      {% else %}
+        <div class="prep-scroll">
+          <table class="prep">
+            <caption class="visually-hidden">
+              Components needed for {{ sheet.on | business_date }}: units ordered
+              on their own, and the dish portions that call for each.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col">Category</th>
+                <th scope="col" class="prep__count">Own units</th>
+                <th scope="col" class="prep__count">Dish portions</th>
+                <th scope="col">For which dishes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for demand in sheet.components %}
+                <tr>
+                  <th scope="row" class="prep__name">
+                    {{ demand.name }}
+                    {% if demand.is_missing %}
+                      <span class="prep__flag">
+                        — no longer in the catalogue
+                      </span>
+                    {% endif %}
+                  </th>
+                  <td>{{ demand.category_label }}</td>
+                  <td class="prep__count">
+                    {% if demand.standalone_units %}
+                      {{ demand.standalone_units }}
+                      {%- if demand.unit_label %}
+                        <span class="prep__unit">{{ demand.unit_label }}</span>
+                      {%- endif %}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td class="prep__count">
+                    {{ demand.dish_portions if demand.dish_portions else '—' }}
+                  </td>
+                  <td>
+                    {% if demand.for_dishes %}
+                      <ul class="prep__for">
+                        {% for dish_name, portions in demand.for_dishes.items() %}
+                          <li>{{ dish_name }} × {{ portions }}</li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <span class="prep__flag">Ordered on its own</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+
+    {#
+      The orders themselves, so the sheet is a working document rather
+      than a total detached from what produced it. Each carries its
+      customer's dietary notes, because that is what the kitchen has to
+      read before it starts.
+    #}
+    <section aria-labelledby="prep-orders">
+      <h2 class="prep__heading" id="prep-orders">Orders on this day</h2>
+      <ul class="prep-orders">
+        {% for entry in sheet.orders %}
+          {% set order = entry.order %}
+          <li class="prep-order">
+            <h3 class="prep-order__reference">
+              {{ order.reference }}
+              <span class="prep-order__status">
+                — {{ order.status.value }}, {{ order.fulfilment.value }}
+              </span>
+            </h3>
+            <ul class="prep-order__lines">
+              {% for line in order.lines %}
+                <li>{{ line.name_snapshot }} × {{ line.quantity }}</li>
+              {% endfor %}
+            </ul>
+            {#
+              Marked by a heavy rule and the words "Dietary notes", not by
+              colour: this sheet is printed, and a print is monochrome.
+            #}
+            {% if entry.dietary_notes %}
+              <p class="prep-order__dietary">
+                <strong>Dietary notes:</strong> {{ entry.dietary_notes }}
+              </p>
+            {% endif %}
+            {% if order.customer_note %}
+              <p class="prep-order__note">Note: {{ order.customer_note }}</p>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+{% endblock %}
