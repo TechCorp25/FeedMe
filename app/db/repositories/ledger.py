@@ -6,13 +6,22 @@ stored as a mutable field (01-DOMAIN.md).
 
 from __future__ import annotations
 
-from pymongo import ASCENDING, DESCENDING
+from pymongo import DESCENDING
 
 from app.db.client import get_db
 from app.db.repositories._common import parse_many
 from app.models.orders import LedgerEntry, LedgerEntryType
 
 COLLECTION = "account_ledger"
+
+#: Both windowed reads sort on `created_at` and then on `_id`. Two entries
+#: written in the same instant — a cancellation's credit landing beside
+#: the charge it offsets, or two corrections typed in one go — carry the
+#: same timestamp, and without a tiebreak the order they come back in is
+#: whatever the storage engine happens to give. That decides which of
+#: them a bounded window keeps, so the page could show a different pair
+#: on two loads. `_id` is monotonic, so it orders them by when they were
+#: actually written.
 
 
 def list_recent_entries(user_id: str, limit: int = 100) -> list[LedgerEntry]:
@@ -29,7 +38,7 @@ def list_recent_entries(user_id: str, limit: int = 100) -> list[LedgerEntry]:
     cursor = (
         get_db()[COLLECTION]
         .find({"user_id": user_id})
-        .sort("created_at", DESCENDING)
+        .sort([("created_at", DESCENDING), ("_id", DESCENDING)])
         .limit(limit)
     )
     return list(reversed(parse_many(LedgerEntry, cursor)))
@@ -79,15 +88,22 @@ def append_entry(user_id: str, entry: LedgerEntry) -> LedgerEntry:
 
 
 def chef_list_entries(user_id: str, limit: int = 500) -> list[LedgerEntry]:
-    """Chef view of one customer's ledger.
+    """Chef view of one customer's ledger, oldest first.
 
     Still filtered by `user_id` — the chef reads one customer at a time —
     but named `chef_*` because the caller is not the owning customer.
+
+    Windowed from the newest end and reversed, for the same reason
+    `list_recent_entries` is: sorting ascending *before* the limit pins a
+    long-running account to its oldest page, so the chef looking up a
+    customer to correct this morning's charge would be shown entries from
+    the year they signed up. The opening balance the page counts from is
+    the caller's to derive, because the aggregate is a separate read.
     """
     cursor = (
         get_db()[COLLECTION]
         .find({"user_id": user_id})
-        .sort("created_at", ASCENDING)
+        .sort([("created_at", DESCENDING), ("_id", DESCENDING)])
         .limit(limit)
     )
-    return parse_many(LedgerEntry, cursor)
+    return list(reversed(parse_many(LedgerEntry, cursor)))

@@ -18,7 +18,7 @@ from app.blueprints.chef import bp
 from app.db.repositories import orders as orders_repo
 from app.models.orders import OrderStatus
 from app.security.decorators import chef_required
-from app.services import catalogue_admin, chef_orders, prep_sheet
+from app.services import catalogue_admin, chef_ledger, chef_orders, prep_sheet
 from app.services.dates import business_today
 
 
@@ -311,3 +311,75 @@ def move_item(plural: str, item_id: str):
         flash(str(error), "error")
 
     return _list_redirect(kind)
+
+
+# --- one customer's ledger --------------------------------------------------
+#
+# Append-only (04-WORKFLOWS.md), so there is no edit route and no delete
+# route here. Not a disabled control, not a route that refuses — no such
+# route exists. A correction is a new offsetting entry.
+
+
+def _customer_or_404(user_id: str):
+    customer = chef_ledger.get_customer(user_id)
+    if customer is None:
+        abort(404)
+    return customer
+
+
+def _ledger_context(customer, submitted=None) -> dict:
+    """What the ledger page renders from, with or without a rejected form."""
+    context = {
+        "ledger": chef_ledger.customer_ledger(customer),
+        "entry_types": [
+            (entry_type.value, chef_ledger.ENTRY_TYPE_LABELS[entry_type])
+            for entry_type in chef_ledger.MANUAL_ENTRY_TYPES
+        ],
+        "directions": chef_ledger.DIRECTION_LABELS,
+        "max_description": chef_ledger.MAX_DESCRIPTION,
+    }
+    if submitted is not None:
+        context["submitted"] = submitted
+    return context
+
+
+@bp.get("/customers/<user_id>/ledger")
+@chef_required
+def customer_ledger(user_id: str) -> str:
+    """One customer's entries and their running balance."""
+    customer = _customer_or_404(user_id)
+    return render_template("chef/ledger.html", **_ledger_context(customer))
+
+
+@bp.post("/customers/<user_id>/ledger")
+@chef_required
+def add_ledger_entry(user_id: str):
+    """Append one hand-entered credit or adjustment."""
+    customer = _customer_or_404(user_id)
+
+    try:
+        entry = chef_ledger.append_manual_entry(
+            current_user,
+            customer,
+            entry_type=request.form.get("entry_type"),
+            amount=request.form.get("amount"),
+            direction=request.form.get("direction"),
+            description=request.form.get("description"),
+        )
+    except chef_ledger.LedgerEntryError as error:
+        # Re-rendered rather than redirected, so the amount and the
+        # description survive a refusal.
+        flash(str(error), "error")
+        return (
+            render_template(
+                "chef/ledger.html", **_ledger_context(customer, request.form)
+            ),
+            400,
+        )
+
+    flash(
+        f"{chef_ledger.ENTRY_TYPE_LABELS[entry.entry_type]} recorded against "
+        f"{customer.display_name or customer.email}.",
+        "success",
+    )
+    return redirect(url_for("chef.customer_ledger", user_id=user_id))

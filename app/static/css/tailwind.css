@@ -1315,6 +1315,13 @@
     @apply min-w-0 flex-1 sm:min-w-[12rem];
   }
 
+  /* A ledger entry's direction, said in words beside the signed number.
+     A minus sign is one character; the words are what make the row
+     readable at a glance and in a monochrome print. */
+  .ledger__direction {
+    @apply font-serif text-sm italic text-ink-muted;
+  }
+
   .site-footer {
     @apply mx-auto max-w-screen border-t-2 border-accent px-4 pb-8 pt-6
            font-serif text-sm text-ink-muted;
