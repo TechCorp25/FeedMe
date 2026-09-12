@@ -33,30 +33,68 @@
 
 /* Design tokens — "Butcher's Label". Colours are declared here as RGB
    channels so Tailwind's alpha modifiers work, and this is the only place a
-   raw colour appears. */
+   raw colour appears.
+
+   Six neutrals carry the kraft ground. Above them sit four label hues, each
+   with exactly one job — `accent` for what you can do, `saffron` for what it
+   costs, `berry` for the way in to the catalogue, `stamp` for the allergen
+   declaration — and three signal hues that only ever report an outcome. Each
+   hue has a `-soft` companion: the same colour at a background weight, so a
+   coloured surface never has to be invented with an opacity modifier.
+
+   Every text pair clears WCAG AA (4.5:1) against `ground`, `surface`,
+   `sunken` and its own `-soft` in both themes; the narrowest is `saffron`
+   on `sunken` in light at 4.87:1. `line` stays decorative at 1.45:1 and
+   still carries no meaning. */
 @layer base {
   :root {
     color-scheme: light;
-    --color-ground: 239 232 218;
-    --color-surface: 247 243 234;
-    --color-ink: 34 27 19;
-    --color-ink-muted: 90 75 57;
-    --color-line: 207 195 172;
-    --color-accent: 47 93 70;
+    --color-ground: 245 239 227;
+    --color-surface: 255 251 242;
+    --color-sunken: 234 225 206;
+    --color-ink: 31 25 19;
+    --color-ink-muted: 85 71 52;
+    --color-line: 212 200 176;
+    --color-accent: 28 106 74;
     --color-accent-ink: 255 255 255;
-    --color-stamp: 122 54 38;
+    --color-accent-soft: 220 237 226;
+    --color-saffron: 138 83 0;
+    --color-saffron-soft: 250 235 204;
+    --color-berry: 122 43 80;
+    --color-berry-soft: 244 228 236;
+    --color-stamp: 140 47 30;
+    --color-stamp-soft: 250 227 221;
+    --color-success: 27 107 58;
+    --color-success-soft: 222 240 227;
+    --color-danger: 163 32 26;
+    --color-danger-soft: 251 226 224;
+    --color-info: 26 79 139;
+    --color-info-soft: 224 235 248;
   }
 
   .dark {
     color-scheme: dark;
-    --color-ground: 25 20 16;
-    --color-surface: 34 27 21;
-    --color-ink: 237 227 210;
-    --color-ink-muted: 179 164 142;
-    --color-line: 58 47 37;
-    --color-accent: 127 179 154;
-    --color-accent-ink: 18 32 26;
-    --color-stamp: 201 118 86;
+    --color-ground: 20 17 13;
+    --color-surface: 30 25 19;
+    --color-sunken: 39 32 25;
+    --color-ink: 241 232 215;
+    --color-ink-muted: 183 168 143;
+    --color-line: 60 49 40;
+    --color-accent: 116 196 156;
+    --color-accent-ink: 10 26 18;
+    --color-accent-soft: 20 48 31;
+    --color-saffron: 235 181 82;
+    --color-saffron-soft: 51 38 14;
+    --color-berry: 238 157 190;
+    --color-berry-soft: 51 22 36;
+    --color-stamp: 241 144 112;
+    --color-stamp-soft: 51 26 18;
+    --color-success: 127 212 161;
+    --color-success-soft: 16 41 26;
+    --color-danger: 255 154 141;
+    --color-danger-soft: 52 22 19;
+    --color-info: 147 191 242;
+    --color-info-soft: 17 34 58;
   }
 
   body {
@@ -133,7 +171,8 @@
   }
 
   .btn--ghost {
-    @apply border-ink bg-transparent text-ink;
+    @apply border-ink bg-transparent text-ink hover:border-accent
+           hover:bg-accent-soft hover:text-accent;
   }
 
   .skip-link {
@@ -147,6 +186,23 @@
     padding-top: env(safe-area-inset-top);
   }
 
+  /* The label ribbon: the four working hues in the order the interface
+     uses them — act, price, browse, declare. Purely decorative, so it is
+     hidden from assistive technology by being a pseudo-element and carries
+     nothing a reader has to see. */
+  .site-header::before {
+    content: '';
+    display: block;
+    height: 5px;
+    background: linear-gradient(
+      90deg,
+      rgb(var(--color-accent)) 0 25%,
+      rgb(var(--color-saffron)) 25% 50%,
+      rgb(var(--color-berry)) 50% 75%,
+      rgb(var(--color-stamp)) 75% 100%
+    );
+  }
+
   .site-header__inner {
     @apply mx-auto flex max-w-screen items-center justify-between gap-4 px-4
            py-4 landscapeShort:py-2;
@@ -155,7 +211,8 @@
   }
 
   .site-header__brand {
-    @apply font-display text-lg uppercase tracking-wide text-ink no-underline;
+    @apply font-display text-lg uppercase tracking-wide text-accent
+           no-underline;
   }
 
   .site-nav {
@@ -166,6 +223,7 @@
     @apply inline-flex min-h-touch shrink-0 items-center whitespace-nowrap
            border-b-2 border-transparent px-3 font-display text-sm uppercase
            tracking-wide text-ink no-underline hover:border-accent
+           hover:text-accent
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
@@ -189,7 +247,59 @@
 
   /* A stamped line above a title: what this page is, before its name. */
   .page__kicker {
-    @apply mb-2 font-display text-xs uppercase tracking-widest text-ink-muted;
+    @apply mb-2 font-display text-xs uppercase tracking-widest text-accent;
+  }
+
+  /* --- the home band ------------------------------------------------- */
+
+  /* The one large field of colour in the interface. It introduces the
+     service and nothing else, so it can be a surface rather than a box. */
+  .hero {
+    @apply -mx-4 mb-10 border-y-2 border-accent bg-accent-soft px-4 py-10
+           sm:mx-0 sm:border-2 sm:px-8 landscapeShort:py-6;
+  }
+
+  .hero__kicker {
+    @apply mb-2 font-display text-xs uppercase tracking-widest text-accent;
+  }
+
+  .hero__lede {
+    @apply mt-4 max-w-prose font-serif text-base text-ink;
+  }
+
+  .hero__actions {
+    @apply mt-8 flex flex-wrap gap-3;
+  }
+
+  /* Three plain statements under the band, ruled in the hue each one is
+     about, so the front page says what the service guarantees rather than
+     only what it sells. */
+  .assurances {
+    @apply mt-10 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-3;
+  }
+
+  .assurance {
+    @apply border-l-4 border-line bg-surface p-4;
+  }
+
+  .assurance--declared {
+    @apply border-stamp;
+  }
+
+  .assurance--priced {
+    @apply border-saffron;
+  }
+
+  .assurance--made {
+    @apply border-berry;
+  }
+
+  .assurance__heading {
+    @apply m-0 font-display text-sm uppercase tracking-widest text-ink;
+  }
+
+  .assurance__body {
+    @apply mt-2 font-serif text-sm text-ink-muted;
   }
 
   /* Reading text: the serif face, at a comfortable measure. */
@@ -214,8 +324,21 @@
            sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
   }
 
+  /* A card is ruled along its top in the hue of the thing it lists, so a
+     row of dishes and a row of components are told apart before either is
+     read. The rule is redundant to the page heading and the card's own
+     link, never the only thing saying which catalogue this is. */
   .card {
-    @apply border-2 border-ink bg-surface;
+    @apply border-2 border-t-4 border-ink border-t-accent bg-surface
+           transition-colors hover:border-accent;
+  }
+
+  .card--dish {
+    @apply border-t-berry hover:border-berry;
+  }
+
+  .card--component {
+    @apply border-t-accent hover:border-accent;
   }
 
   .card__body {
@@ -242,9 +365,11 @@
     @apply mt-auto flex items-baseline gap-2 border-t border-line pt-3;
   }
 
+  /* Money carries its own hue everywhere it appears, so a price is found
+     without reading the page. */
   .card__amount,
   .item-header__amount {
-    @apply font-display text-lg uppercase tracking-wide text-ink;
+    @apply font-display text-lg uppercase tracking-wide text-saffron;
   }
 
   .card__unit,
@@ -263,7 +388,8 @@
      alone, and it is not the item's declaration — that stays on the item
      page, in the allergen tab. */
   .card__caution {
-    @apply border-l-2 border-stamp py-1 pl-3 font-serif text-xs text-stamp;
+    @apply border-l-2 border-stamp bg-stamp-soft p-2 pl-3 font-serif text-xs
+           text-stamp;
   }
 
   .breadcrumb {
@@ -302,8 +428,8 @@
   /* Taste metadata is deliberately round, so it can never be mistaken for
      the square allergen stamp beside it. */
   .chip {
-    @apply inline-flex items-center rounded-pill border border-ink-muted
-           bg-transparent px-3 py-1 font-serif text-sm text-ink-muted;
+    @apply inline-flex items-center rounded-pill border border-berry
+           bg-berry-soft px-3 py-1 font-serif text-sm text-berry;
   }
 
   /* Allergen chips are a compliance surface: squared off like a stamp, never
@@ -317,11 +443,14 @@
   }
 
   .chip--contains {
-    @apply border-stamp font-semibold text-stamp;
+    @apply border-stamp bg-stamp-soft font-semibold text-stamp;
   }
 
+  /* A cross-contact possibility, not a declaration: the dashed edge and the
+     quieter surface hold it apart from `contains` without softening the
+     words, which say the same thing on their own. */
   .chip--may {
-    @apply border-dashed border-ink-muted text-ink-muted;
+    @apply border-dashed border-ink-muted bg-sunken text-ink-muted;
   }
 
   /* --- tabs --------------------------------------------------------- */
@@ -348,7 +477,7 @@
   }
 
   .tab[aria-selected='true'] {
-    @apply border-accent text-accent;
+    @apply border-accent bg-accent-soft text-accent;
   }
 
   .tab-panel {
@@ -378,9 +507,11 @@
            text-sm text-ink;
   }
 
-  /* Neutral, never alarming, and never the words 'no allergens'. */
+  /* Neutral, never alarming, and never the words 'no allergens'. The
+     informational hue and the dashed edge both say "not yet known"; neither
+     is asked to say it alone. */
   .notice--pending {
-    @apply border-dashed border-ink-muted text-ink-muted;
+    @apply border-dashed border-info bg-info-soft text-ink;
   }
 
   /* --- item content ------------------------------------------------- */
@@ -447,10 +578,10 @@
   }
 
   .provenance__link {
-    @apply inline-flex min-h-touch items-center border-2 border-ink
+    @apply inline-flex min-h-touch items-center border-2 border-accent
            bg-transparent px-3 py-1 font-display text-xs uppercase
-           tracking-widest text-ink no-underline hover:bg-ink
-           hover:text-ground
+           tracking-widest text-accent no-underline hover:bg-accent
+           hover:text-accent-ink
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
   }
@@ -472,10 +603,11 @@
     @apply flex list-none flex-wrap gap-2 p-0;
   }
 
+  /* A menu is a way in to the catalogue, so it takes the browse hue. */
   .entry-points__link {
-    @apply inline-flex min-h-touch items-center border-2 border-ink
-           bg-transparent px-3 py-1 font-display text-xs uppercase
-           tracking-widest text-ink no-underline hover:bg-ink
+    @apply inline-flex min-h-touch items-center border-2 border-berry
+           bg-berry-soft px-3 py-1 font-display text-xs uppercase
+           tracking-widest text-berry no-underline hover:bg-berry
            hover:text-ground
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
@@ -486,7 +618,7 @@
   /* A plain GET form, laid out as one band on a wide screen and stacked on a
      narrow one. */
   .filters {
-    @apply mt-6 flex flex-col gap-4 border-2 border-ink bg-surface p-4
+    @apply mt-6 flex flex-col gap-4 border-2 border-ink bg-sunken p-4
            lg:flex-row lg:flex-wrap lg:items-start lg:gap-x-8;
   }
 
@@ -503,7 +635,7 @@
   }
 
   .filters__select {
-    @apply min-h-touch w-full max-w-xs border-2 border-ink bg-ground px-3
+    @apply min-h-touch w-full max-w-xs border-2 border-ink bg-surface px-3
            font-serif text-base text-ink
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
@@ -546,8 +678,8 @@
      control is rather than in a footnote. Boxed and stamped so it reads as
      part of the compliance language, not as a hint. */
   .filters__warning {
-    @apply max-w-prose border-2 border-stamp bg-ground p-3 font-serif text-sm
-           text-ink;
+    @apply max-w-prose border-2 border-stamp bg-stamp-soft p-3 font-serif
+           text-sm text-ink;
   }
 
   .filters__actions {
@@ -564,8 +696,8 @@
      number, so it has to be read, not noticed. */
   .cart-badge {
     @apply inline-flex min-w-[1.75rem] items-center justify-center border-2
-           border-ink px-1 font-display text-xs uppercase tracking-widest
-           text-ink;
+           border-saffron bg-saffron-soft px-1 font-display text-xs uppercase
+           tracking-widest text-saffron;
   }
 
   /* A flashed confirmation. Announced by the region it sits in; boxed so
@@ -574,17 +706,32 @@
     @apply mb-6 flex list-none flex-col gap-2 p-0;
   }
 
+  /* A flash is ruled down its leading edge in the hue of its outcome. The
+     wording already says what happened; the colour only makes it findable
+     on a page the customer is not looking at the top of. */
   .flash {
-    @apply max-w-prose border-2 border-ink bg-surface p-3 font-serif text-sm
-           text-ink;
+    @apply max-w-prose border-2 border-l-8 border-ink border-l-ink bg-surface
+           p-3 font-serif text-sm text-ink;
   }
 
+  .flash--success {
+    @apply border-success border-l-success bg-success-soft;
+  }
+
+  .flash--message,
+  .flash--info {
+    @apply border-info border-l-info bg-info-soft;
+  }
+
+  /* An error is not an allergen declaration: it takes the signal hue, and
+     `stamp` stays reserved for what is in the food. */
   .flash--error {
-    @apply border-stamp text-stamp;
+    @apply border-danger border-l-danger bg-danger-soft text-danger;
   }
 
   .cart-add-block {
-    @apply mt-8 flex flex-col gap-3 border-2 border-ink bg-surface p-4;
+    @apply mt-8 flex flex-col gap-3 border-2 border-l-8 border-ink
+           border-l-accent bg-surface p-4;
     scroll-margin-top: 4rem;
   }
 
@@ -606,7 +753,7 @@
 
   .cart-add__quantity,
   .cart-line__quantity {
-    @apply min-h-touch w-20 border-2 border-ink bg-ground px-3 font-serif
+    @apply min-h-touch w-20 border-2 border-ink bg-surface px-3 font-serif
            text-base text-ink
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
@@ -617,7 +764,7 @@
   }
 
   .cart-message--error {
-    @apply text-stamp;
+    @apply text-danger;
   }
 
   .cart-lines {
@@ -648,7 +795,7 @@
   }
 
   .cart-line__amount {
-    @apply font-display text-base uppercase tracking-wide text-ink;
+    @apply font-display text-base uppercase tracking-wide text-saffron;
   }
 
   .cart-line__unit {
@@ -656,7 +803,7 @@
   }
 
   .cart-line__gone {
-    @apply max-w-prose font-serif text-sm text-stamp;
+    @apply max-w-prose font-serif text-sm text-danger;
   }
 
   .cart-line__controls {
@@ -668,7 +815,7 @@
   }
 
   .cart-line__total {
-    @apply font-display text-lg uppercase tracking-wide text-ink
+    @apply font-display text-lg uppercase tracking-wide text-saffron
            sm:min-w-[6rem] sm:text-right;
   }
 
@@ -682,7 +829,7 @@
   }
 
   .cart-summary__amount {
-    @apply m-0 font-display text-xl uppercase tracking-wide text-ink;
+    @apply m-0 font-display text-xl uppercase tracking-wide text-saffron;
   }
 
   .cart-summary__pending {
@@ -691,7 +838,7 @@
 
   /* A blocked cart is stated, not styled into a warning colour alone. */
   .notice--blocked {
-    @apply border-stamp text-stamp;
+    @apply border-danger bg-danger-soft text-danger;
   }
 
   /* --- forms: sign-in, registration, checkout ------------------------ */
@@ -710,7 +857,7 @@
   }
 
   .form__input {
-    @apply min-h-touch w-full border-2 border-ink bg-ground px-3 py-2
+    @apply min-h-touch w-full border-2 border-ink bg-surface px-3 py-2
            font-serif text-base text-ink
            focus-visible:outline focus-visible:outline-2
            focus-visible:outline-offset-2 focus-visible:outline-accent;
@@ -752,10 +899,40 @@
 
   /* --- a placed order ------------------------------------------------- */
 
-  /* Stamped, and never colour alone: the word is the status. */
+  /* Stamped, and never colour alone: the word is the status, and the stamp
+     is drawn the same way whether or not its state is recognised. The
+     modifier only tints a mark that already reads correctly without it —
+     added by the server on render and kept in step by `order-status.js`, so
+     an unstyled or unknown state degrades to the neutral stamp rather than
+     to no stamp. */
   .status-stamp {
-    @apply inline-flex items-center border-2 border-ink px-2 py-1 font-display
-           text-xs uppercase tracking-widest text-ink;
+    @apply inline-flex items-center border-2 border-ink bg-surface px-2 py-1
+           font-display text-xs uppercase tracking-widest text-ink;
+  }
+
+  /* Received, not yet looked at. */
+  .status-stamp--placed {
+    @apply border-info bg-info-soft text-info;
+  }
+
+  /* Accepted by the kitchen. */
+  .status-stamp--confirmed {
+    @apply border-accent bg-accent-soft text-accent;
+  }
+
+  /* Being made — the one state where the customer can no longer cancel. */
+  .status-stamp--prepping {
+    @apply border-saffron bg-saffron-soft text-saffron;
+  }
+
+  .status-stamp--ready,
+  .status-stamp--collected,
+  .status-stamp--delivered {
+    @apply border-success bg-success-soft text-success;
+  }
+
+  .status-stamp--cancelled {
+    @apply border-danger bg-danger-soft text-danger;
   }
 
   .order-lines {
@@ -774,7 +951,7 @@
   /* The snapshot, set apart from the line it belongs to so a declaration
      is never mistaken for a price. */
   .order-line__allergens {
-    @apply flex flex-col gap-2 border-l-2 border-line pl-4;
+    @apply flex flex-col gap-2 border-l-2 border-stamp bg-sunken p-3 pl-4;
   }
 
   /* --- the customer's account ----------------------------------------- */
@@ -794,7 +971,8 @@
   /* The page you are on is marked by weight and an underline, never by
      colour alone. */
   .account-nav__link--current {
-    @apply text-ink underline decoration-2 underline-offset-4;
+    @apply text-accent underline decoration-accent decoration-2
+           underline-offset-4;
   }
 
   .order-summaries {
@@ -820,7 +998,7 @@
   }
 
   .order-summary__amount {
-    @apply font-display text-lg tabular-nums;
+    @apply font-display text-lg tabular-nums text-saffron;
   }
 
   /* Scrolls inside itself rather than pushing the page sideways at 360px. */
@@ -837,8 +1015,8 @@
   }
 
   .ledger th {
-    @apply border-b-2 border-ink py-2 pr-4 font-display text-xs uppercase
-           tracking-widest text-ink;
+    @apply border-b-2 border-ink bg-sunken py-2 pr-4 font-display text-xs
+           uppercase tracking-widest text-ink;
   }
 
   .ledger td {
@@ -865,27 +1043,27 @@
   }
 
   .balance-total dd {
-    @apply m-0 font-display text-2xl tabular-nums;
+    @apply m-0 font-display text-2xl tabular-nums text-saffron;
   }
 
   /* Set apart from the order it acts on: cancelling is not one more field
      on the page, and the note above the button is part of the control. */
   .danger-block {
-    @apply mt-10 flex flex-col gap-3 border-2 border-stamp p-4;
+    @apply mt-10 flex flex-col gap-3 border-2 border-danger bg-danger-soft p-4;
   }
 
   .danger-block__heading {
-    @apply m-0 font-display text-base uppercase tracking-widest text-stamp;
+    @apply m-0 font-display text-base uppercase tracking-widest text-danger;
   }
 
   .btn--danger {
-    @apply border-stamp bg-transparent text-stamp hover:bg-stamp
-           hover:text-surface;
+    @apply border-danger bg-transparent text-danger hover:border-danger
+           hover:bg-danger hover:text-surface;
   }
 
   .site-footer {
-    @apply mx-auto max-w-screen border-t border-line px-4 pb-8 pt-6 font-serif
-           text-sm text-ink-muted;
+    @apply mx-auto max-w-screen border-t-2 border-accent px-4 pb-8 pt-6
+           font-serif text-sm text-ink-muted;
     padding-bottom: max(2rem, env(safe-area-inset-bottom));
   }
 }

@@ -19,9 +19,10 @@
   <dl class="spec-list" data-order-status="{{ order.reference }}">
     <dt>Status</dt>
     <dd>
-      <span class="status-stamp" data-order-status-label>
-        {{ order.status.value | capitalize }}
-      </span>
+      <span
+        class="status-stamp status-stamp--{{ order.status.value }}"
+        data-order-status-label
+      >{{ order.status.value | capitalize }}</span>
     </dd>
     <dt>Placed</dt>
     <dd>{{ order.created_at | business_date }}</dd>

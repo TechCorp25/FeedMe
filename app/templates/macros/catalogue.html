@@ -5,9 +5,14 @@
   cross-contact risk. It is empty unless the customer is excluding an
   allergen, and it never repeats the item's own declaration — that lives
   on the item page, in the allergen tab (01-DOMAIN.md).
+
+  `kind` is the catalogue this card belongs to — 'component' or 'dish'. It
+  only rules the top edge of the card in that catalogue's hue. The heading
+  above the grid and the card's own link already say which catalogue this
+  is, so the colour is a second signal and never the only one.
 #}
-{% macro item_card(item, detail_url, cautions=[]) %}
-  <li class="card">
+{% macro item_card(item, detail_url, cautions=[], kind='component') %}
+  <li class="card card--{{ kind }}">
     <article class="card__body">
       <h2 class="card__title">
         <a class="card__link" href="{{ detail_url }}">{{ item.name }}</a>

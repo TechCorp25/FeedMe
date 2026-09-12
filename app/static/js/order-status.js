@@ -16,6 +16,21 @@ const POLL_INTERVAL_MS = 60000;
 /** Statuses after which an order never changes again (04-WORKFLOWS.md). */
 const TERMINAL = new Set(['collected', 'delivered', 'cancelled']);
 
+/**
+ * The statuses that have a stamp modifier in the stylesheet. Kept as an
+ * explicit list so a status added to the server without a matching rule
+ * shows the neutral stamp instead of an unstyled class name.
+ */
+const KNOWN_STATUSES = new Set([
+  'placed',
+  'confirmed',
+  'prepping',
+  'ready',
+  'collected',
+  'delivered',
+  'cancelled',
+]);
+
 const watched = new Map();
 
 document.querySelectorAll('[data-order-status]').forEach((element) => {
@@ -81,11 +96,29 @@ async function refresh(reference) {
   if (typeof payload?.status_label === 'string') {
     label.textContent = payload.status_label;
   }
+  if (typeof payload?.status === 'string') restamp(label, payload.status);
   // The kitchen can start preparing an order while this page sits open.
   // Leaving the cancel button drawn would contradict the status beside
   // it and offer a control that can now only produce an error.
   if (payload?.can_cancel === false) closeCancellation(payload.is_terminal);
   if (payload?.is_terminal) watched.delete(reference);
+}
+
+/**
+ * Re-tint the status stamp to match the status now written in it.
+ *
+ * The word is the status; the colour only makes it findable (03-FRONTEND.md).
+ * An unrecognised status therefore loses the tint and keeps the neutral
+ * stamp rather than keeping a colour that now contradicts the word beside
+ * it. The class list is the only thing touched, so a stamp the server
+ * rendered without a modifier is left as the server rendered it.
+ */
+function restamp(label, status) {
+  const wanted = `status-stamp--${status}`;
+  [...label.classList]
+    .filter((name) => name.startsWith('status-stamp--') && name !== wanted)
+    .forEach((name) => label.classList.remove(name));
+  if (KNOWN_STATUSES.has(status)) label.classList.add(wanted);
 }
 
 /**

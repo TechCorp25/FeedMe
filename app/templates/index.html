@@ -3,21 +3,60 @@
 {% block title %}FeedMe — prepared meals{% endblock %}
 
 {% block content %}
-  {# The stamped header band: a label, then what it labels. #}
-  <p class="page__kicker">Prepared meals · Melbourne</p>
-  <h1 class="page__title">FeedMe</h1>
-  <p class="page__lede">
-    A private meal-preparation service. Browse components and complete
-    dishes, read the full allergen declaration for every item, and place
-    an order.
-  </p>
-  <p class="mt-8 flex flex-wrap gap-3">
-    <a class="btn" href="{{ url_for('public.dishes') }}">Browse dishes</a>
-    <a class="btn btn--ghost" href="{{ url_for('public.components') }}">
-      Browse components
-    </a>
-  </p>
+  {#
+    The one large field of colour in the interface. Everything below it is
+    the kraft ground the rest of the application is set on.
+  #}
+  <div class="hero">
+    <p class="hero__kicker">Prepared meals · Melbourne</p>
+    <h1 class="page__title">FeedMe</h1>
+    <p class="hero__lede">
+      A private meal-preparation service. Browse components and complete
+      dishes, read the full allergen declaration for every item, and place
+      an order for collection or delivery.
+    </p>
+    <p class="hero__actions">
+      <a class="btn" href="{{ url_for('public.dishes') }}">Browse dishes</a>
+      <a class="btn btn--ghost" href="{{ url_for('public.components') }}">
+        Browse components
+      </a>
+    </p>
+  </div>
+
+  {#
+    Three statements, each ruled in the hue the rest of the interface uses
+    for that subject: the declaration, the price, the kitchen. They say what
+    the service commits to, which is the part of the front page a customer
+    with an allergy is actually reading for.
+  #}
+  <ul class="assurances">
+    <li class="assurance assurance--declared">
+      <h2 class="assurance__heading">Every allergen declared</h2>
+      <p class="assurance__body">
+        The full FSANZ declarable vocabulary, named on every item and never
+        abbreviated, with cross-contact risk stated separately from what an
+        item actually contains.
+      </p>
+    </li>
+    <li class="assurance assurance--priced">
+      <h2 class="assurance__heading">Priced per unit</h2>
+      <p class="assurance__body">
+        What you see on the card is what the cart charges. Prices are held
+        in whole cents and never re-derived in the browser.
+      </p>
+    </li>
+    <li class="assurance assurance--made">
+      <h2 class="assurance__heading">Made, not stocked</h2>
+      <p class="assurance__body">
+        Components are the things the kitchen makes; dishes are built from
+        them. Each dish links to every component it is made of.
+      </p>
+    </li>
+  </ul>
+
   <p class="page__note">
-    Checkout is still to come: a cart can be filled, but not yet placed.
+    Allergen information is provided in good faith and reviewed per item.
+    It is not a guarantee against cross-contact — read the declaration on
+    the item page before ordering.
   </p>
 {% endblock %}
