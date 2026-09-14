@@ -37,6 +37,13 @@ category           str                       component: dressing|sauce|puree|sid
                                              dish:      chef-defined
 meal_type_ids      [str]                     dishes only; a dish may span several
 image_path         str | None                storage-interface path, not a URL
+                                             names the widest rendition; the
+                                             narrower ones share its stem
+image_alt          str | None                the chef's description of the
+                                             photograph. Required whenever
+                                             image_path is set
+image_width        int | None                the widest rendition's intrinsic
+image_height       int | None                size, for width/height attributes
 price_cents        int                       integer minor units, AUD. Never float.
 unit               str                       "each" | "100g" | "portion" | "250ml"
 is_available       bool                      soft availability toggle
@@ -62,6 +69,39 @@ ingredients_updated_at  datetime | None      when the ingredients last changed
 component_refs     [str]                     optional provenance links
 serves             int
 ```
+
+### Images
+
+An `image_path` is a **storage-interface path, never a URL**. It is written
+only by the catalogue editor, from a file the chef uploads, and it is read
+back only through `StorageBackend`. No template builds a filesystem path or
+a bucket address: one route serves every rendition, so moving to object
+storage changes no catalogue document.
+
+An upload is accepted on the strength of **what is actually in the file**.
+It is decoded, and only a JPEG, PNG or WebP raster survives; the
+`Content-Type` and the extension are the uploader's to choose and are not
+consulted. SVG is refused — it is a document that can carry script, and
+these bytes are served back to browsers from this origin.
+
+One upload produces a **ladder of renditions** at fixed widths, sharing one
+path stem, so `image_path` names the whole set. The widest one's intrinsic
+size is stored as `image_width`/`image_height`, which is what lets the
+`width` and `height` attributes be rendered server-side and stop the page
+reflowing as images arrive.
+
+`image_alt` is **required whenever an image is stored, and never derived**.
+An `alt` defaulted to the item's name would repeat the heading a screen
+reader has just read and describe nothing. The four fields move together:
+an item with any of them missing renders no image rather than a broken one.
+
+**An item with no image renders no image.** There is no placeholder. The
+catalogue card's layout does not depend on one existing.
+
+**An image never appears in an allergen surface** — not the allergen tab,
+not an order's consolidated declaration, not the prep sheet. Those are
+compliance surfaces, the prep sheet is printed in monochrome, and an image
+carries nothing that is not also in text.
 
 ### Ingredient
 

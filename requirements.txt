@@ -12,5 +12,11 @@ python-dotenv==1.2.2
 # container images — and `BUSINESS_TIMEZONE` has to resolve wherever this
 # runs, or a customer is offered a date that has already passed locally.
 tzdata==2025.2
+# Catalogue images. The upload is validated by *decoding* it rather than
+# by trusting a `Content-Type` or an extension, and the rendition ladder
+# `srcset` needs is generated at upload time — both want a real image
+# library, and Pillow is the one Python has. Manylinux wheels, so no
+# build toolchain is needed on any of the deploy targets.
+Pillow==11.3.0
 # Production WSGI server. Railway and Render both run `gunicorn wsgi:app`.
 gunicorn==23.0.0

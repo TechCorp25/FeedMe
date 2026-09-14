@@ -1,4 +1,5 @@
 {# Catalogue card and the filter strip. Shared by all three browse surfaces. #}
+{% import "macros/images.html" as image_macros %}
 
 {#
   `cautions` names the excluded allergens this item declares as a
@@ -11,8 +12,17 @@
   above the grid and the card's own link already say which catalogue this
   is, so the colour is a second signal and never the only one.
 #}
-{% macro item_card(item, detail_url, cautions=[], kind='component') %}
+{% macro item_card(item, detail_url, cautions=[], kind='component', eager=false) %}
   <li class="card card--{{ kind }}">
+    {#
+      Decorative here, so `alt=""`: the heading link directly below states
+      the item's name, and announcing it twice helps nobody. The first
+      card in a grid is above the fold and loads eagerly; every one after
+      it is lazy (03-FRONTEND.md). An item with no image renders no
+      element at all — see `macros/images.html` for why there is no
+      placeholder.
+    #}
+    {{ image_macros.item_image(item, CARD_SIZES, 'card__image', alt='', lazy=not eager) }}
     <article class="card__body">
       <h2 class="card__title">
         <a class="card__link" href="{{ detail_url }}">{{ item.name }}</a>

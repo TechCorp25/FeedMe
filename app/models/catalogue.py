@@ -161,7 +161,26 @@ class ItemBase(TimestampedModel):
     summary: str = ""
     description: str = ""
     category: str = ""
+
+    #: A storage-interface path, never a URL (01-DOMAIN.md). It names the
+    #: *widest* rendition of an uploaded image; the narrower rungs share
+    #: its stem, so one field names the whole `srcset` set.
     image_path: str | None = None
+
+    #: The chef's description of the photograph, for somebody who cannot
+    #: see it. Required whenever an image is stored and deliberately never
+    #: defaulted to the item's name: on the detail page the `<h1>` has
+    #: just said the name, so an `alt` repeating it announces it twice and
+    #: describes nothing (03-FRONTEND.md's accessibility floor).
+    image_alt: str | None = None
+
+    #: The widest rendition's intrinsic size, stored so the `width` and
+    #: `height` attributes can be rendered server-side. Without them the
+    #: page reflows as images land, which is the layout shift those
+    #: attributes exist to prevent.
+    image_width: int | None = Field(default=None, ge=1)
+    image_height: int | None = Field(default=None, ge=1)
+
     price_cents: int = Field(ge=0)
     unit: Unit = Unit.EACH
     is_available: bool = False
@@ -194,6 +213,22 @@ class ItemBase(TimestampedModel):
     #: disagree: a review is stale when the ingredients were edited after
     #: it was made.
     ingredients_updated_at: datetime | None = None
+
+    @property
+    def has_image(self) -> bool:
+        """True only when every part of a renderable image is present.
+
+        All four fields or none. An `image_path` without its dimensions
+        would render without `width`/`height` and shift the layout, and
+        one without an `alt` would render an undescribed picture — so a
+        half-stored image renders as no image rather than as a bad one.
+        """
+        return bool(
+            self.image_path
+            and self.image_alt
+            and self.image_width
+            and self.image_height
+        )
 
     @property
     def is_visible_to_customers(self) -> bool:

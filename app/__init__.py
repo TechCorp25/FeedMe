@@ -120,6 +120,21 @@ def _register_template_filters(app: Flask) -> None:
     # to `requested_for`, applied on the way out as well as the way in.
     app.jinja_env.filters["business_date"] = format_business_date
 
+    # A template asks for a URL and a `srcset` and gets strings. It never
+    # slices or joins a stored path, so `image_path` cannot become a URL
+    # by having one built next to it in Jinja (01-DOMAIN.md).
+    from app.services.catalogue_images import (
+        CARD_SIZES,
+        DETAIL_SIZES,
+        image_url,
+        srcset_for,
+    )
+
+    app.jinja_env.globals["image_url"] = image_url
+    app.jinja_env.globals["image_srcset"] = srcset_for
+    app.jinja_env.globals["CARD_SIZES"] = CARD_SIZES
+    app.jinja_env.globals["DETAIL_SIZES"] = DETAIL_SIZES
+
 
 def _register_template_context(app: Flask) -> None:
     """Values every template may read, whatever rendered it."""
@@ -156,6 +171,18 @@ def _register_blueprints(app: Flask) -> None:
 
 
 def _register_error_handlers(app: Flask) -> None:
+    @app.errorhandler(413)
+    def too_large(_error):  # noqa: ANN202
+        """A request body past `MAX_CONTENT_LENGTH`.
+
+        The backstop, not the refusal anybody should meet: an oversized
+        image is caught by `catalogue_images` and answered with a sentence
+        the chef can act on. This is what is left when a body is large
+        enough that Werkzeug stops reading before a view runs, and it is
+        rendered as a page rather than left as Werkzeug's bare 413.
+        """
+        return render_template("errors/413.html"), 413
+
     @app.errorhandler(403)
     def forbidden(_error):  # noqa: ANN202
         return render_template("errors/403.html"), 403
