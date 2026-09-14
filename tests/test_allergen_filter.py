@@ -15,7 +15,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.models.allergens import ALLERGEN_LABELS, AllergenCode
+from app.models.allergens import (
+    ALLERGEN_LABELS,
+    LEGACY_CODES,
+    WRITABLE_CODES,
+    AllergenCode,
+)
 from app.models.catalogue import Component, Dish, MealType
 
 REVIEWED = {
@@ -183,15 +188,20 @@ def test_the_whole_controlled_vocabulary_is_always_offered(
     An allergen missing from the strip would read as 'nothing here
     contains that'. Lupin is declared by no seeded item and is still
     offered, in the vocabulary's own order.
+
+    The *live* vocabulary: a retired code is history the pages still
+    render, not a choice a customer is asked to make.
     """
     html = client.get(url).get_data(as_text=True)
 
-    for code in AllergenCode:
+    for code in WRITABLE_CODES:
         assert 'name="exclude"' in html
         assert 'value="{}"'.format(code.value) in html
         assert ALLERGEN_LABELS[code] in html
 
-    assert html.index('value="cereals_gluten"') < html.index('value="lupin"')
+    assert html.index('value="wheat"') < html.index('value="lupin"')
+    for code in LEGACY_CODES:
+        assert 'value="{}"'.format(code.value) not in html
 
 
 @pytest.mark.parametrize(("url", "declares", "may_contain", "clear"), SURFACES)
@@ -252,3 +262,63 @@ def test_excluding_everything_says_so_without_pretending_to_be_safe(client, seed
     assert "Sesame dressing" not in html
     # An item declaring nothing is not hidden by an exclusion.
     assert "Harissa" in html
+
+
+# --- items reviewed before the wheat/gluten split ---------------------------
+#
+# `cereals_gluten` is retired and no longer offered in the strip, but a
+# catalogue item reviewed before the split still declares it until the
+# chef re-reviews it. A customer excluding gluten — or wheat — means that
+# item too. Over-reaching is the safe direction for a browsing aid
+# (04-WORKFLOWS.md); under-reaching would show them the item they asked
+# not to see.
+
+
+@pytest.fixture()
+def seeded_before_the_split(db):
+    db["components"].insert_many(
+        [
+            item.to_mongo()
+            for item in [
+                make_component(
+                    name="Sourdough crumb",
+                    slug="sourdough-crumb",
+                    allergens=dict(
+                        REVIEWED,
+                        contains=["cereals_gluten"],
+                        gluten_cereals=["wheat"],
+                    ),
+                ),
+                make_component(
+                    name="Barley risotto",
+                    slug="barley-risotto",
+                    allergens=dict(
+                        REVIEWED, may_contain=["cereals_gluten"]
+                    ),
+                ),
+                make_component(name="Harissa", slug="harissa"),
+            ]
+        ]
+    )
+    return db
+
+
+@pytest.mark.parametrize("excluded", ["gluten", "wheat"])
+def test_a_live_exclusion_hides_an_item_declaring_the_retired_code(
+    client, seeded_before_the_split, excluded
+):
+    html = client.get(f"/components?exclude={excluded}").get_data(as_text=True)
+
+    assert "Sourdough crumb" not in html
+    assert "Harissa" in html
+
+
+@pytest.mark.parametrize("excluded", ["gluten", "wheat"])
+def test_a_live_exclusion_cautions_on_the_retired_code(
+    client, seeded_before_the_split, excluded
+):
+    html = client.get(f"/components?exclude={excluded}").get_data(as_text=True)
+
+    assert "Barley risotto" in html
+    assert "card__caution" in html
+    assert ALLERGEN_LABELS[AllergenCode(excluded)] in html.split("card__caution")[1]

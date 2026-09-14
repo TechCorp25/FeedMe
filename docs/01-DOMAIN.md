@@ -79,8 +79,8 @@ Australian service. Allergen declaration follows FSANZ Standard 1.2.3 / the PEAL
 AllergenBlock:
   contains          [AllergenCode]   declared present
   may_contain       [AllergenCode]   cross-contact risk
-  gluten_cereals    [str]            required if "cereals_gluten" in contains
-                                     wheat | rye | barley | oats | spelt
+  gluten_cereals    [str]            required if "gluten" in contains
+                                     wheat | rye | barley | oats
   tree_nut_species  [str]            required if "tree_nuts" in contains
                                      almond | brazil | cashew | hazelnut | macadamia
                                      | pecan | pine_nut | pistachio | walnut
@@ -98,14 +98,45 @@ record.
 `AllergenCode` enum:
 
 ```
-cereals_gluten, crustacea, mollusc, egg, fish, milk,
+wheat, gluten, crustacea, mollusc, egg, fish, milk,
 peanut, sesame, soy, tree_nuts, lupin, sulphites
 ```
+
+`wheat` and `gluten` are **two declarations, not one**, because the table to
+S9—3 gives them two rows: wheat is declarable irrespective of whether it
+contains gluten, and barley, oats and rye are declarable only if they do. A
+wheat-containing item that also contains gluten declares both. See
+*Verification record* below.
+
+### Retired vocabulary
+
+```
+cereals_gluten                      superseded by wheat + gluten
+gluten_cereals: spelt               superseded by wheat
+```
+
+**Parsed, never written.** Both values are frozen into
+`OrderLine.allergen_snapshot` on orders already placed, and a snapshot is never
+rewritten — a declaration a customer was given is what they were given. So they
+still parse, still render with the wording they were written with, and are
+never offered by the allergen editor or accepted from it. `WRITABLE_CODES` and
+`WRITABLE_GLUTEN_CEREALS` in `models/allergens.py` are the live vocabulary, and
+`AllergenBlock.uses_retired_vocabulary` is how a page says a block predates the
+split.
+
+The **browse exclusion filter** offers the live vocabulary only — three
+overlapping names for two things is not a choice a customer should be asked to
+make — but excluding either `wheat` or `gluten` also matches a stored
+`cereals_gluten`, at the query and in the cross-contact caution. That widens an
+exclusion beyond what it literally names, which is the safe direction for a
+browsing aid to fail; it never rewrites or re-renders a declaration.
 
 Rules, enforced in code:
 
 - Crustacea, mollusc and fish are **three separate declarations**. Never collapsed.
-- `cereals_gluten` present ⇒ `gluten_cereals` non-empty. Validation error otherwise.
+- `gluten` present ⇒ `gluten_cereals` non-empty. Validation error otherwise. The
+  retired `cereals_gluten` carries the same rule, so a stored block cannot lose
+  its cereals on re-read.
 - `tree_nuts` present ⇒ `tree_nut_species` non-empty. Validation error otherwise.
 - `reviewed_at` set ⇒ `reviewed_by` non-empty. Validation error otherwise. An unreviewed block carries `None` in both fields; there is no placeholder reviewer.
 - An allergen code is never in both `contains` and `may_contain`. Validation error otherwise — a declared allergen is not simultaneously a cross-contact risk.
@@ -113,52 +144,61 @@ Rules, enforced in code:
 - The tab renders "No declared allergens" only when the block has been reviewed and `contains` is empty. An unreviewed item never renders that phrase.
 - Allergen fields are never modified by any code path except the chef allergen editor.
 
-> Verify the enum against the current text of FSANZ Standard 1.2.3 before go-live. The list above reflects the PEAL requirements but food standards are amended; treat this file as a starting point, not a legal source.
-
 ### Verification record
 
-**Checked 12 September 2026.** Source: the table to section **S9—3** of
-*Australia New Zealand Food Standards Code — Schedule 9 — Mandatory advisory
-statements and declarations*, **compilation No. 2, in force 25 February 2021,
-up to Amendment 197** (F2021C00195), read from FSANZ's *Food Standards Code —
-Compilation (April 2026)* PDF. That is the PEAL amendment; its transition
-period ended 25 February 2024 and its stock-in-trade period ended
+**Checked 12 September 2026. Acted on 14 September 2026.** Source: the table to
+section **S9—3** of *Australia New Zealand Food Standards Code — Schedule 9 —
+Mandatory advisory statements and declarations*, **compilation No. 2, in force
+25 February 2021, up to Amendment 197** (F2021C00195), read from FSANZ's *Food
+Standards Code — Compilation (April 2026)* PDF. That is the PEAL amendment; its
+transition period ended 25 February 2024 and its stock-in-trade period ended
 25 February 2026, so it is in full force with no remaining concession.
-
-**Code changed as a result: none yet.** Two discrepancies were found and are
-recorded here rather than fixed, because closing either changes `AllergenCode`
-and that enum's values are frozen into `OrderLine.allergen_snapshot`.
 
 **Column 4 of the table** — the required name for a declaration made outside a
 statement of ingredients, which is what this application renders — gives *two*
-rows where `AllergenCode` has one:
+rows where `AllergenCode` had one:
 
 | Schedule 9 item | Declarable when | Required name (column 4) |
 |---|---|---|
 | 3 — wheat, and its hybridised strains | always, *irrespective of whether it contains gluten* | `wheat`; and `gluten` as well, if gluten is present |
 | 2 — barley, oats, rye, and their hybridised strains | only *if they contain gluten* | `gluten` |
 
-So:
+Two discrepancies followed, and both are now closed in code:
 
-1. **`cereals_gluten` collapses two separate declarations.** It cannot express
-   wheat present without gluten — which item 3 requires be declared anyway —
-   and the name it renders is not one the table uses.
+1. **`cereals_gluten` collapsed two separate declarations.** It could not
+   express wheat present without gluten — which item 3 requires be declared
+   anyway — and the name it rendered is not one the table uses. `WHEAT` and
+   `GLUTEN` were added; `CEREALS_GLUTEN` was retired.
 2. **`spelt` is not a food in the table.** Spelt is of the genus *Triticum*, so
-   it is covered by item 3 and its required name is `wheat`.
-   `GlutenCereal.SPELT` therefore authorises a declaration the standard does
-   not have.
+   item 3 covers it and its required name is `wheat`. `GlutenCereal.SPELT` was
+   retired.
 
-Otherwise the vocabulary matches: the nine tree nut species are exactly the
-table's; crustacea, mollusc and fish are three separate rows, as this document
-already requires; and sulphites are declarable at 10 mg/kg or above. Two
-required names differ from the labels used here — `crustacean` rather than
-"Crustacea", and mollusc means a *marine* mollusc under S9—3(2)(c).
+**Two label changes, not enum changes.** `crustacea` renders as `Crustacean`,
+which is the required name; and because S9—3(2)(c) defines mollusc as a *marine*
+mollusc, that code renders as `Marine mollusc` rather than leaving a customer to
+decide for themselves what counts.
 
-**Proposed direction, not yet approved.** Add `WHEAT` and `GLUTEN`; keep
-`CEREALS_GLUTEN` and `SPELT` parseable but never writable and never offered by
-the allergen editor. Deleting them outright would break every historical order
-on read, and a snapshot is never rewritten — a declaration a customer was
-given is what they were given, whatever the vocabulary has since become.
+**Neither retired value was deleted**, and this is the part that is a rule
+rather than a convenience. Both are frozen into `OrderLine.allergen_snapshot` on
+orders already placed, and a snapshot is never rewritten. Deleting them would
+break every historical order on read — the customer's own order page, the chef's
+queue and the rolled-up summary alike. A declaration a customer was given is
+what they were given, whatever the vocabulary has since become. They are
+therefore parseable, renderable and unwritable, as *Retired vocabulary* above
+sets out.
+
+**No migration.** Catalogue items reviewed before the split keep declaring
+`cereals_gluten` until the chef re-reviews them; the chef editor says so, the
+browse filter still catches them, and nothing rewrites a declaration on their
+behalf — that would be a compliance record authored by a script.
+
+**Otherwise the vocabulary matches.** The nine tree nut species are exactly the
+table's; crustacean, mollusc and fish are three separate rows, as this document
+already requires; and sulphites are declarable at 10 mg/kg or above.
+
+> This file is a record of a check, not a legal source. Food standards are
+> amended. Re-verify against the current compilation before go-live and after
+> any amendment.
 
 ## Publication
 

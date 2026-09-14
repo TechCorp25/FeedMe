@@ -15,7 +15,7 @@ from pymongo.errors import DuplicateKeyError
 from app.db.client import get_db
 from app.models.base import utcnow
 from app.db.repositories._common import parse_many, parse_one, to_object_id
-from app.models.allergens import AllergenCode
+from app.models.allergens import AllergenCode, codes_matching
 from app.models.catalogue import Dish
 
 COLLECTION = "dishes"
@@ -38,8 +38,11 @@ def _visible_query(
         # excluded allergen stays in the result and is marked in the
         # listing instead: hiding a cross-contact risk would let the
         # filter read as a safety guarantee (04-WORKFLOWS.md).
+        # Widened to the retired codes each live code covers: an item
+        # reviewed before the wheat/gluten split still declares
+        # `cereals_gluten`, and a customer excluding gluten means it too.
         query["allergens.contains"] = {
-            "$nin": [code.value for code in exclude_allergens]
+            "$nin": [code.value for code in codes_matching(exclude_allergens)]
         }
     if meal_type_id is not None:
         # `meal_type_ids` is a list: a dish may sit under several meal
