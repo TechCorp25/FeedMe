@@ -139,3 +139,33 @@ gunicorn --bind "0.0.0.0:${PORT:-5000}" --workers "${WEB_CONCURRENCY:-2}" \
 its own and gunicorn does not, and a variable that exists under only one
 of the two start commands is a difference between environments waiting to
 be debugged. Real environment variables always win over the file.
+
+## Uploaded images and the disk they land on
+
+`STORAGE_BACKEND=local` writes catalogue images under `STORAGE_LOCAL_PATH`
+(default `var/uploads`), which is the **container's own filesystem**.
+
+On Railway and on Render that filesystem is ephemeral: it is recreated on
+every deploy and on every restart, so **uploaded photographs do not
+survive a deploy** unless the path is a mounted persistent disk. Nothing
+else is affected — the catalogue documents, the orders and the ledger are
+all in Atlas — and an item whose renditions have gone renders as an item
+with no image rather than as a broken one, because `ItemBase.has_image`
+and the browse pages already treat a missing image as no image. The chef
+re-uploads.
+
+Two ways to make it durable, in the order they should be considered:
+
+1. **Mount a disk and point `STORAGE_LOCAL_PATH` at it.** Render offers a
+   persistent disk on paid instance types; Railway offers a volume. This
+   is a platform setting plus one environment variable, and no code
+   change.
+2. **Add an object-storage backend.** `StorageBackend` is the interface
+   this exists for: an S3 implementation is a new class in `app/storage/`
+   and a new branch in `app.storage._build`, and **not one catalogue
+   document changes**, because `image_path` is a storage-interface path
+   and never a URL (01-DOMAIN.md).
+
+Neither is done here. The free instance types both have ephemeral disks,
+and choosing between paying for one and writing the second backend is the
+repository owner's call, not a default this should pick.

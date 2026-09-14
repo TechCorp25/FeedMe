@@ -71,9 +71,15 @@
     </p>
   {% endif %}
 
+  {#
+    `multipart/form-data` because this form now carries a file. A real
+    multipart submit, not a scripted upload: the image control works with
+    JavaScript disabled, like every other control in the chef area.
+  #}
   <form
     class="form"
     method="post"
+    enctype="multipart/form-data"
     action="{{ url_for('chef.save_item', plural=plural_url, item_id=item.id) if not is_new else url_for('chef.save_item', plural=plural_url) }}"
   >
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -176,15 +182,67 @@
         </div>
       {% endif %}
 
+      {#
+        The image. There is no path field here any more: `image_path` is a
+        storage-interface path (01-DOMAIN.md) and one typed by hand could
+        be anything, a URL included. The chef chooses a file; the
+        application decides where it lives.
+      #}
       <div class="form__field">
-        <label class="form__label" for="image_path">Image path</label>
+        <label class="form__label" for="image">Photograph</label>
+        {% if item and item.has_image %}
+          <img
+            class="form__image-preview"
+            src="{{ image_url(item.image_path) }}"
+            srcset="{{ image_srcset(item) }}"
+            sizes="240px"
+            width="{{ item.image_width }}"
+            height="{{ item.image_height }}"
+            loading="lazy"
+            decoding="async"
+            alt="The photograph currently on {{ item.name }}: {{ item.image_alt }}"
+          >
+        {% endif %}
         <input
-          class="form__input" id="image_path" name="image_path" type="text"
-          maxlength="{{ limits.text }}"
-          value="{{ value_of('image_path', item.image_path if item) }}"
+          class="form__input" id="image" name="image" type="file"
+          accept="image/jpeg,image/png,image/webp"
         >
-        <p class="form__hint">A storage path, not a URL. Optional.</p>
+        <p class="form__hint">
+          {% if item and item.has_image %}
+            Choosing a file replaces the photograph above.
+          {% endif %}
+          {{ image_limits.formats }}, up to {{ image_limits.max_mb }}MB, at
+          least {{ image_limits.min_edge }} pixels on the shortest side. What
+          is actually in the file decides — renaming something to
+          <code>.jpg</code> will not get it past.
+        </p>
       </div>
+
+      <div class="form__field">
+        <label class="form__label" for="image_alt">Image description</label>
+        <input
+          class="form__input" id="image_alt" name="image_alt" type="text"
+          maxlength="{{ image_limits.max_alt }}"
+          value="{{ value_of('image_alt', item.image_alt if item) }}"
+        >
+        {#
+          Required with an image, and never defaulted to the item's name.
+          The page heading has already said the name; an `alt` repeating
+          it announces it twice to a screen reader and describes nothing.
+        #}
+        <p class="form__hint">
+          Required whenever there is a photograph. Describe what is in the
+          picture for somebody who cannot see it — not the {{ kind }}'s
+          name, which is already on the page beside it.
+        </p>
+      </div>
+
+      {% if item and item.has_image %}
+        <div class="form__choice">
+          <input type="checkbox" id="image_remove" name="image_remove" value="1">
+          <label for="image_remove">Remove the photograph from this {{ kind }}</label>
+        </div>
+      {% endif %}
     </fieldset>
 
     {# --- tab 1: ingredients --- #}

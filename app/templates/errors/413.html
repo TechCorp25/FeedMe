@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}That upload is too large — FeedMe{% endblock %}
+{% block content %}
+  <h1 class="page__title">That upload is too large</h1>
+  <p class="page__lede">
+    The file was too big to read, so nothing was saved and nothing was
+    changed. Export the image smaller — a JPEG a couple of megabytes in
+    size is more than enough for a catalogue photograph — and try again.
+  </p>
+  <p><a class="btn" href="{{ url_for('chef.components') }}">Back to the catalogue</a></p>
+{% endblock %}
