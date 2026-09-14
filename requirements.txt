@@ -17,6 +17,6 @@ tzdata==2025.2
 # `srcset` needs is generated at upload time — both want a real image
 # library, and Pillow is the one Python has. Manylinux wheels, so no
 # build toolchain is needed on any of the deploy targets.
-Pillow==11.3.0
+Pillow==12.3.0
 # Production WSGI server. Railway and Render both run `gunicorn wsgi:app`.
 gunicorn==23.0.0
