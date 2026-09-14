@@ -214,13 +214,36 @@ Aggregates all orders for a date into a component-level pick list — quantities
 **Catalogue editors** — `/chef/components`, `/chef/dishes`
 Full CRUD. Create, edit, archive, reorder, toggle availability. Dish editor includes optional component linking.
 
-**Allergen editor** — a deliberately separate step, not a section of the main item form.
+**Allergen editor** — `/chef/components/<id>/allergens`, `/chef/dishes/<id>/allergens`
+A deliberately separate step, not a section of the main item form.
 
-- Opened explicitly from the item editor.
-- Requires the chef to confirm the declaration before saving; sets `reviewed_at` and `reviewed_by`.
-- Displays the rollup warning when a linked component declares an allergen the dish omits. The warning is advisory. The chef resolves it; the system never auto-applies it.
+- Opened explicitly from the item editor and from the catalogue list — the
+  list is where the chef sees what is blocked from publication, and routing
+  the fix through the form puts an unrelated page in between.
+- Requires the chef to confirm the declaration before saving; sets `reviewed_at`
+  and `reviewed_by`. There is no save here that is not a review. `reviewed_by`
+  is the acting chef's email address: a compliance record identifies a person,
+  and a display name is editable and need not be unique.
+- Displays the rollup warning when a linked component declares an allergen the
+  dish omits. The warning is advisory. The chef resolves it; the system never
+  auto-applies it, and no control on the page offers to.
 - An item cannot be published while `reviewed_at is None`.
-- Editing ingredients on an already-reviewed item flags the allergen block as stale and surfaces a re-review prompt. It does not silently invalidate the item, and it does not unpublish it — it prompts.
+- Editing ingredients on an already-reviewed item flags the allergen block as
+  stale and surfaces a re-review prompt. It does not silently invalidate the
+  item, and it does not unpublish it — it prompts. Re-reviewing is what clears
+  it, because staleness is derived from the two timestamps rather than stored.
+- The page renders the item's **ingredients as they stand**, read-only, because
+  that is what the declaration is a declaration about. They are edited on the
+  item editor and never here.
+- It writes `allergens` and nothing else. `catalogue_admin` writes everything
+  else and never `allergens`; both go through a repository function named for
+  the field it touches, so the rule is checkable at the call site.
+- Only the live vocabulary is offered, **and only it is accepted**. A retired
+  code posted by a stale tab is refused, never dropped: saving a declaration
+  the chef did not see and reporting success is the one failure a compliance
+  form must not have. A stored block that predates the wheat/gluten split is
+  reported and never translated — nothing is pre-ticked on its behalf.
+- Preference flags and spice level never appear on this surface.
 
 *Decided by this editor:* `sulphites_declared` and `contains` are **one
 declaration**. The rule is a biconditional — `sulphites` in `contains` ⇔

@@ -220,6 +220,26 @@ def chef_next_sort_order() -> int:
     return int(document.get("sort_order", 0)) + 1 if document else 0
 
 
+def chef_set_allergens(dish_id: str, allergens: dict) -> bool:
+    """Write the allergen block onto one dish. True when it landed.
+
+    Its own function, deliberately, rather than a call to
+    `chef_update_dish` with one more key. 01-DOMAIN.md: allergen
+    fields are never modified by any code path except the chef allergen
+    editor, and a rule about which call site may write a field is only
+    checkable if that write has a name of its own. This is the only
+    function in this module that touches `allergens`.
+    """
+    object_id = to_object_id(dish_id)
+    if object_id is None:
+        return False
+    result = get_db()[COLLECTION].update_one(
+        {"_id": object_id},
+        {"$set": {"allergens": allergens, "updated_at": utcnow()}},
+    )
+    return result.matched_count == 1
+
+
 def chef_set_sort_order(dish_id: str, sort_order: int) -> bool:
     """Move one dish in the chef's ordering."""
     object_id = to_object_id(dish_id)

@@ -18,7 +18,13 @@ from app.blueprints.chef import bp
 from app.db.repositories import orders as orders_repo
 from app.models.orders import OrderStatus
 from app.security.decorators import chef_required
-from app.services import catalogue_admin, chef_ledger, chef_orders, prep_sheet
+from app.services import (
+    allergen_editor,
+    catalogue_admin,
+    chef_ledger,
+    chef_orders,
+    prep_sheet,
+)
 from app.services.dates import business_today
 
 
@@ -311,6 +317,56 @@ def move_item(plural: str, item_id: str):
         flash(str(error), "error")
 
     return _list_redirect(kind)
+
+
+# --- the allergen editor ----------------------------------------------------
+#
+# A deliberately separate step, not a section of the catalogue form
+# (04-WORKFLOWS.md). It is reached from the item editor, it is the only
+# code path that writes an `AllergenBlock`, and saving it *is* the
+# review — there is no save that does not stamp `reviewed_at` and
+# `reviewed_by`.
+
+
+@bp.get("/<plural>/<item_id>/allergens")
+@chef_required
+def allergens(plural: str, item_id: str) -> str:
+    """The declaration, and the ingredients it is a declaration about."""
+    kind = _kind_or_404(plural)
+    item = _item_or_404(kind, item_id)
+    return render_template(
+        "chef/allergens.html", **allergen_editor.form_context(kind, item)
+    )
+
+
+@bp.post("/<plural>/<item_id>/allergens")
+@chef_required
+def save_allergens(plural: str, item_id: str):
+    """Record the reviewed declaration.
+
+    A refusal re-renders rather than redirects. The chef has just read an
+    ingredients list against a set of checkboxes, and throwing that away
+    over a missing confirmation is how a compliance surface teaches
+    somebody to tick everything and try again.
+    """
+    kind = _kind_or_404(plural)
+    item = _item_or_404(kind, item_id)
+
+    try:
+        allergen_editor.save_review(kind, item, current_user, request.form)
+    except allergen_editor.AllergenReviewError as error:
+        flash(str(error), "error")
+        context = allergen_editor.form_context(kind, item)
+        context["submitted"] = request.form
+        return render_template("chef/allergens.html", **context), 400
+
+    flash(
+        f"The allergen declaration for {item.name} is reviewed and saved.",
+        "success",
+    )
+    return redirect(
+        url_for("chef.allergens", plural=plural, item_id=item_id)
+    )
 
 
 # --- one customer's ledger --------------------------------------------------
