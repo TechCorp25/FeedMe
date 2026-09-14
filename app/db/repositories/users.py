@@ -173,3 +173,27 @@ def chef_list_customers_by_ids(user_ids: Sequence[str]) -> dict[str, User]:
     return {
         str(document["_id"]): User.model_validate(document) for document in cursor
     }
+
+
+def chef_set_password_hash(user_id: str, password_hash: str) -> bool:
+    """Set one customer's password hash on the chef's behalf. True when it landed.
+
+    Its own function rather than a second caller of `update_password_hash`,
+    which is the self-scope rehash `accounts.authenticate` performs with
+    the password already in hand. This one is a write by somebody who is
+    not the user being written to, and 02-ARCHITECTURE.md wants that scope
+    visible at the call site rather than inferred from who happened to
+    call it.
+
+    It writes the hash and nothing else. `is_active` and `role` are not
+    touched: a reset restores access to an account, it does not reinstate
+    one that was deactivated, and it never changes what an account is.
+    """
+    object_id = to_object_id(user_id)
+    if object_id is None:
+        return False
+    result = get_db()[COLLECTION].update_one(
+        {"_id": object_id},
+        {"$set": {"password_hash": password_hash, "updated_at": utcnow()}},
+    )
+    return result.matched_count == 1
