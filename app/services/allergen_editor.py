@@ -90,6 +90,7 @@ def _code_choices(selected: list[AllergenCode]) -> list[Choice]:
 def form_context(kind: str, item: ItemBase) -> dict[str, Any]:
     """Everything the editor template renders from."""
     block = item.allergens
+    declares_gluten = AllergenCode.GLUTEN in block.contains
     return {
         "kind": kind,
         "plural_url": PLURAL[kind],
@@ -97,11 +98,17 @@ def form_context(kind: str, item: ItemBase) -> dict[str, Any]:
         "block": block,
         "contains_choices": _code_choices(block.contains),
         "may_contain_choices": _code_choices(block.may_contain),
+        # Ticked only where the *live* declaration they belong to is
+        # ticked. A retired block's cereals belong to `cereals_gluten`,
+        # which is deliberately left unticked — carrying its cereals over
+        # would let the chef tick "Gluten" and save half a translation
+        # nobody made, which is the inference this page promises not to
+        # do.
         "gluten_cereal_choices": [
             Choice(
                 cereal.value,
                 GLUTEN_CEREAL_LABELS[cereal],
-                cereal in set(block.gluten_cereals),
+                declares_gluten and cereal in set(block.gluten_cereals),
             )
             for cereal in WRITABLE_GLUTEN_CEREALS
         ],
@@ -119,7 +126,23 @@ def form_context(kind: str, item: ItemBase) -> dict[str, Any]:
         "sulphites_label": ALLERGEN_LABELS[AllergenCode.SULPHITES],
         "rollup_warnings": rollup_warnings(kind, item),
         "max_chef_note": MAX_CHEF_NOTE,
+        # What the ingredients were when this page was drawn. Submitted
+        # back, so a review confirmed against a list that has since
+        # changed is refused rather than stamped as current.
+        "ingredients_stamp": ingredients_stamp(item),
     }
+
+
+def ingredients_stamp(item: ItemBase) -> str:
+    """The ingredient list's version, as a form value.
+
+    `ingredients_updated_at` is exactly what `allergen_review_is_stale`
+    compares a review against, so it is the right thing to pin a review
+    to. An item whose ingredients have never been edited has none, and
+    stamps as the empty string.
+    """
+    moment = item.ingredients_updated_at
+    return moment.isoformat() if moment is not None else ""
 
 
 def rollup_warnings(kind: str, item: ItemBase) -> list[allergen_rollup.RollupWarning]:
@@ -238,7 +261,16 @@ def save_review(kind: str, item: ItemBase, chef: User, form) -> AllergenBlock:
     The item's other fields are untouched: this writes `allergens` and
     `updated_at` and nothing else, the mirror of `catalogue_admin` never
     writing `allergens` at all.
+
+    The review is pinned to the ingredients the page showed. A save is a
+    statement that this declaration matches *those* ingredients, and a
+    save made against a list edited in another tab in the meantime would
+    stamp a `reviewed_at` later than `ingredients_updated_at` — clearing
+    the staleness prompt on a declaration nobody has checked against what
+    the item now contains. That is worse than no review at all, because
+    it reads as a current one.
     """
+    _check_ingredients_are_unchanged(item, form)
     block = parse_block(form, reviewed_by=_reviewer(chef))
     written = (
         components_repo.chef_set_allergens(item.id, block.model_dump(mode="python"))
@@ -248,6 +280,18 @@ def save_review(kind: str, item: ItemBase, chef: User, form) -> AllergenBlock:
     if not written:
         raise AllergenReviewError("That item no longer exists.")
     return block
+
+
+def _check_ingredients_are_unchanged(item: ItemBase, form) -> None:
+    """Refuse a review made against ingredients that have since changed."""
+    if (form.get("ingredients_stamp") or "") == ingredients_stamp(item):
+        return
+    raise AllergenReviewError(
+        "The ingredients changed while this page was open, so this "
+        "declaration was checked against a list the item no longer has. "
+        "Nothing has been saved — the current ingredients are shown above; "
+        "check the declaration against them and confirm again."
+    )
 
 
 def _reviewer(chef: User) -> str:

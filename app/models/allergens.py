@@ -28,7 +28,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from enum import Enum
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationInfo, model_validator
 
 from app.models.base import EmbeddedModel
 
@@ -214,6 +214,20 @@ def declaration_labels(
     return labels
 
 
+#: Key `parse_one` / `parse_many` set when validating a document that
+#: came out of MongoDB rather than one this application just built.
+#:
+#: It is not a way to write a block that breaks a rule — nothing in the
+#: application layer passes it — and it relaxes exactly one rule, for
+#: exactly one reason: see `_check_declaration`.
+STORED_CONTEXT_KEY = "stored"
+
+
+def _is_stored(info: ValidationInfo) -> bool:
+    context = info.context
+    return bool(isinstance(context, dict) and context.get(STORED_CONTEXT_KEY))
+
+
 class AllergenBlock(EmbeddedModel):
     """One item's allergen declaration.
 
@@ -282,6 +296,16 @@ class AllergenBlock(EmbeddedModel):
         return self.is_reviewed and not self.contains
 
     @property
+    def sulphites_mirror_disagrees(self) -> bool:
+        """True when a stored block's threshold flag and entry disagree.
+
+        Unreachable through the editor and refused on every write, so
+        this can only be a block stored before the rule existed. The
+        editor says so; re-reviewing repairs it.
+        """
+        return (AllergenCode.SULPHITES in self.contains) != self.sulphites_declared
+
+    @property
     def uses_retired_vocabulary(self) -> bool:
         """True when this block still carries a code the editor retired.
 
@@ -298,7 +322,7 @@ class AllergenBlock(EmbeddedModel):
         )
 
     @model_validator(mode="after")
-    def _check_declaration(self) -> "AllergenBlock":
+    def _check_declaration(self, info: ValidationInfo) -> "AllergenBlock":
         declares_gluten = {AllergenCode.GLUTEN, AllergenCode.CEREALS_GLUTEN} & set(
             self.contains
         )
@@ -314,6 +338,27 @@ class AllergenBlock(EmbeddedModel):
             )
         if self.reviewed_at is not None and not self.reviewed_by:
             raise ValueError("reviewed_by is required once reviewed_at is set")
+        # Wheat is declarable in its own right. Schedule 9 item 3 gives the
+        # required name as `wheat`, and `gluten` *as well* where gluten is
+        # present — so gluten that comes from wheat is two declarations,
+        # not one. Without this, a block naming wheat as the source cereal
+        # renders "Gluten (wheat)" and never declares the wheat: the exact
+        # under-declaration the wheat/gluten split was made to prevent.
+        #
+        # Live declarations only. A block carrying the retired
+        # `cereals_gluten` was written under a vocabulary that could not
+        # express the distinction, and holding it to a rule that did not
+        # exist would make a stored record unreadable.
+        if (
+            AllergenCode.GLUTEN in self.contains
+            and GlutenCereal.WHEAT in self.gluten_cereals
+            and AllergenCode.WHEAT not in self.contains
+        ):
+            raise ValueError(
+                "wheat is declarable in its own right, so gluten from wheat "
+                "declares both: add 'wheat' to contains alongside 'gluten'"
+            )
+
         # Sulphites are the one entry with a second field of its own, and
         # the two have to agree. Schedule 9 item 1 makes sulphites
         # declarable *only* at 10 mg/kg or above, so a `contains` entry
@@ -326,7 +371,20 @@ class AllergenBlock(EmbeddedModel):
         # unticking the flag could not retract the entry without the same
         # inference in reverse. The editor exposes one control, so the
         # error is unreachable through the UI.
-        if (AllergenCode.SULPHITES in self.contains) != self.sulphites_declared:
+        #
+        # A *stored* block is read rather than refused. This rule is new
+        # and the previous schema permitted the pair to disagree, so
+        # documents already in the database can carry it — an order's
+        # frozen snapshot among them. Refusing to parse one is the very
+        # failure the retired-vocabulary rules exist to prevent: a
+        # declaration a customer was given, unreadable because the rules
+        # moved. Worse, `parse_many` isolates nothing, so one such
+        # snapshot would take out a whole order history rather than one
+        # row. It is read exactly as written — `sulphites_threshold_note`
+        # still requires both halves, so nothing is invented — and
+        # `sulphites_mirror_disagrees` is what tells the chef to repair
+        # it. Every write still goes through the refusal below.
+        if not _is_stored(info) and self.sulphites_mirror_disagrees:
             raise ValueError(
                 "sulphites_declared and a 'sulphites' entry in contains are "
                 "one declaration and move together: sulphites are declarable "

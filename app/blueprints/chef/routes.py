@@ -410,7 +410,10 @@ def customers() -> str:
     ledger to read and a credit that may need writing.
     """
     return render_template(
-        "chef/customers.html", directory=chef_ledger.customer_directory()
+        "chef/customers.html",
+        directory=chef_ledger.customer_directory(
+            chef_ledger.parse_page(request.args.get("page"))
+        ),
     )
 
 

@@ -75,6 +75,21 @@
     </p>
   {% endif %}
 
+  {% if block.sulphites_mirror_disagrees %}
+    {#
+      Only reachable on a block stored before the rule existed: the form
+      offers one control and every write is refused unless both halves
+      agree. Reported rather than repaired — filling in either half would
+      be this page authoring a declaration.
+    #}
+    <p class="notice notice--pending" role="status">
+      This declaration's sulphites threshold flag does not match its
+      allergen list — one was recorded without the other, which the editor
+      no longer allows. It is shown exactly as it was recorded and nothing
+      has been changed. Saving a review puts the two back together.
+    </p>
+  {% endif %}
+
   {% if rollup_warnings %}
     {#
       Advisory. 01-DOMAIN.md: rollup "never mutates the dish document. The
@@ -131,6 +146,13 @@
     action="{{ url_for('chef.save_allergens', plural=plural_url, item_id=item.id) }}"
   >
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {#
+      Which ingredient list this review is a review *of*. A save is a
+      statement about the ingredients above; if they change in another
+      tab while this page sits open, the save is refused rather than
+      stamped as a current review of a list nobody checked.
+    #}
+    <input type="hidden" name="ingredients_stamp" value="{{ ingredients_stamp }}">
 
     <fieldset class="form__fieldset">
       <legend class="filters__heading">Contains</legend>
@@ -167,8 +189,9 @@
       <p class="form__hint">
         Required when gluten is declared above, and named inside the chip a
         customer reads. Wheat is declarable on its own whether or not it
-        contains gluten — tick “Wheat” above for that, and “Gluten” as well
-        where gluten is present.
+        contains gluten, so naming wheat here means ticking “Wheat” above
+        as well as “Gluten” — they are two declarations, and saving without
+        both is refused.
       </p>
       <ul class="filters__options">
         {% for choice in gluten_cereal_choices %}

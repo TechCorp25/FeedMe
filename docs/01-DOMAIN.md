@@ -173,6 +173,14 @@ Rules, enforced in code:
   retired `cereals_gluten` carries the same rule, so a stored block cannot lose
   its cereals on re-read.
 - `tree_nuts` present ⇒ `tree_nut_species` non-empty. Validation error otherwise.
+- `gluten` present **and** `wheat` named among `gluten_cereals` ⇒ `wheat` present
+  in `contains`. Validation error otherwise. Item 3 makes wheat declarable in its
+  own right, so gluten that comes from wheat is two declarations; without this
+  rule a block renders "Gluten (wheat)" and never declares the wheat, which is
+  the under-declaration the split was made to prevent. Live declarations only —
+  a block carrying the retired `cereals_gluten` was written under a vocabulary
+  that could not express the distinction, and holding a stored record to a rule
+  that did not exist would make it unreadable.
 - `sulphites` in `contains` ⇔ `sulphites_declared`. A biconditional, so the flag
   is a **checked mirror** of the `contains` entry rather than a second, quieter
   route to a declaration. Validation error either way round, and it raises rather
@@ -181,6 +189,21 @@ Rules, enforced in code:
   declarable only at ≥10 mg/kg, so an entry with the flag false asserts a
   threshold nobody recorded. `sulphites_threshold_note` qualifies the chip; it
   never stands in for it.
+
+  **On the read path this one rule is relaxed.** It is newer than the schema,
+  which permitted the pair to disagree, so documents already stored can carry
+  that state — an order's frozen snapshot among them. Refusing to parse one
+  would be the failure the retired-vocabulary rules exist to prevent: a
+  declaration a customer was given, unreadable because the rules moved. Worse,
+  `parse_many` isolates nothing, so one such snapshot would take out a whole
+  order history rather than one row. `parse_one` and `parse_many` therefore
+  validate with a `stored` context that skips this check and nothing else;
+  every write still goes through it, the block is rendered exactly as written
+  (`sulphites_threshold_note` still requires both halves, so nothing is
+  invented), and `AllergenBlock.sulphites_mirror_disagrees` is what tells the
+  chef to repair it. No other rule is relaxed: the rest have always been
+  enforced, so no stored document can violate one without having bypassed the
+  model entirely.
 - `reviewed_at` set ⇒ `reviewed_by` non-empty. Validation error otherwise. An unreviewed block carries `None` in both fields; there is no placeholder reviewer.
 - An allergen code is never in both `contains` and `may_contain`. Validation error otherwise — a declared allergen is not simultaneously a cross-contact risk.
 - An item with **no** allergen review (`reviewed_at is None`) cannot be published to customers. See *Publication* below.

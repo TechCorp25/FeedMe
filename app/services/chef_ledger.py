@@ -34,9 +34,8 @@ from app.models.users import User
 #: How many entries one page shows, windowed from the newest end.
 LEDGER_LIMIT = 200
 
-#: How many customers the index lists. One kitchen, one chef; a bound
-#: rather than a pagination scheme, and the page says when it is reached.
-CUSTOMER_LIMIT = 500
+#: How many customers one page of the index lists.
+CUSTOMER_LIMIT = 100
 
 MAX_DESCRIPTION = 500
 #: $10,000 in cents. A bound on a typo, not on the business.
@@ -156,27 +155,71 @@ class CustomerRow:
 @dataclass(frozen=True)
 class CustomerDirectory:
     rows: list[CustomerRow]
-    is_truncated: bool = False
+    page: int = 1
+    has_next: bool = False
 
     @property
     def is_empty(self) -> bool:
         return not self.rows
 
+    @property
+    def has_previous(self) -> bool:
+        return self.page > 1
 
-def customer_directory() -> CustomerDirectory:
-    """Every customer, with their balance, for `/chef/customers`.
+    @property
+    def previous_page(self) -> int:
+        return max(1, self.page - 1)
+
+    @property
+    def next_page(self) -> int:
+        return self.page + 1
+
+    @property
+    def first_position(self) -> int:
+        """The 1-based position of the first row, for the page's wording."""
+        return (self.page - 1) * CUSTOMER_LIMIT + 1
+
+    @property
+    def last_position(self) -> int:
+        return self.first_position + len(self.rows) - 1
+
+
+def parse_page(raw: str | None) -> int:
+    """A page number from a query string. Anything else is page one.
+
+    The same rule every other filter here keeps: an unrecognised value is
+    dropped rather than rejected, because a mistyped URL should show the
+    chef their customers, not an error page.
+    """
+    text = (raw or "").strip()
+    return int(text) if text.isdigit() and int(text) >= 1 else 1
+
+
+def customer_directory(page: int = 1) -> CustomerDirectory:
+    """One page of customers, with their balances, for `/chef/customers`.
 
     04-WORKFLOWS.md gives the ledger a URL and no page to reach it from;
     the order queue links to a customer who has an order outstanding,
     which is not the same set. A customer who settled last month still
     has a ledger.
 
-    Two reads, not one per row: the customers, and every balance in one
-    aggregation. A customer with no entries has nothing to sum and reads
-    as zero, which is what a balance computed by aggregation means when
-    there is nothing to aggregate.
+    Paged rather than bounded. A bound with nothing past it would leave
+    every customer after the first page with no route to their ledger at
+    all, which is the one thing this page exists to provide. One extra
+    row is read to learn whether there is a next page — cheaper than
+    counting the collection, and exact.
+
+    Two reads per page, not one per row: the customers, and every balance
+    in one aggregation. A customer with no entries has nothing to sum and
+    reads as zero, which is what a balance computed by aggregation means
+    when there is nothing to aggregate.
     """
-    customers = users_repo.chef_list_customers(limit=CUSTOMER_LIMIT)
+    page = max(1, page)
+    found = users_repo.chef_list_customers(
+        limit=CUSTOMER_LIMIT + 1, skip=(page - 1) * CUSTOMER_LIMIT
+    )
+    has_next = len(found) > CUSTOMER_LIMIT
+    customers = found[:CUSTOMER_LIMIT]
     balances = ledger_repo.chef_balances_by_user()
     return CustomerDirectory(
         rows=[
@@ -186,7 +229,8 @@ def customer_directory() -> CustomerDirectory:
             )
             for customer in customers
         ],
-        is_truncated=len(customers) >= CUSTOMER_LIMIT,
+        page=page,
+        has_next=has_next,
     )
 
 

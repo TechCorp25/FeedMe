@@ -243,6 +243,22 @@ A deliberately separate step, not a section of the main item form.
   the chef did not see and reporting success is the one failure a compliance
   form must not have. A stored block that predates the wheat/gluten split is
   reported and never translated — nothing is pre-ticked on its behalf.
+- **A review is pinned to the ingredients the page showed.** The form carries
+  the item's `ingredients_updated_at`, and a save is refused if it has moved
+  since — the same shape as the checkout's digest of what it showed. Without
+  it, a page left open while another tab edits the ingredients would save a
+  `reviewed_at` later than `ingredients_updated_at`, clearing the staleness
+  prompt on a declaration nobody has checked against what the item now
+  contains. That reads as a current review, which is worse than none. The
+  refusal re-renders with the new ingredients to check against.
+- Nothing from a retired block is pre-ticked, **its cereals included**. The
+  cereals belong to the retired `cereals_gluten`, which is itself left clear;
+  carrying them over would let the chef tick "Gluten" and save half a
+  translation nobody made.
+- A stored block whose sulphites threshold flag and `contains` entry disagree
+  is flagged here and repaired by re-reviewing. It cannot be created — the form
+  offers one control and every write is refused — so it can only predate the
+  rule.
 - Preference flags and spice level never appear on this surface.
 
 *Decided by this editor:* `sulphites_declared` and `contains` are **one
@@ -264,8 +280,12 @@ set the flag without the entry, the customer page deliberately rendered nothing
 for that state, and the defect was therefore visible to nobody.
 
 **Customers** — `/chef/customers`
-Every customer account, ordered by name, each with its balance and the way in
-to its ledger. The order queue links to a customer who has an order
+Every customer account, ordered by name and **paged**, each with its balance and
+the way in to its ledger. Paged rather than bounded: a bound with nothing past
+it would leave every customer after the first page with no route to their ledger
+at all, which is the one thing this page exists to provide. One extra row per
+read tells the page whether there is a next one, which is cheaper than counting
+the collection and exact. The order queue links to a customer who has an order
 outstanding, which is not the same set — a customer who settled last month
 still has a ledger to read and a credit that may need writing. Balances are one
 aggregation for the whole page, not one per row. Dietary notes are *flagged*

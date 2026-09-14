@@ -14,15 +14,22 @@
     the rest.
   </p>
 
-  {% if directory.is_truncated %}
-    <p class="notice notice--pending" role="status">
-      The first {{ directory.rows | length }} customers are shown.
-    </p>
-  {% endif %}
-
   {% if directory.is_empty %}
-    <p class="notice">No customer accounts yet.</p>
+    <p class="notice">
+      {% if directory.has_previous %}
+        There are no customers on this page.
+        <a href="{{ url_for('chef.customers') }}">Back to the first page</a>.
+      {% else %}
+        No customer accounts yet.
+      {% endif %}
+    </p>
   {% else %}
+    {% if directory.has_previous or directory.has_next %}
+      <p class="form__hint">
+        Customers {{ directory.first_position }}–{{ directory.last_position }},
+        in name order.
+      </p>
+    {% endif %}
     <ul class="admin-list">
       {% for row in directory.rows %}
         <li class="admin-item">
@@ -72,5 +79,29 @@
         </li>
       {% endfor %}
     </ul>
+
+    {#
+      Plain links, both directions. A bound with nothing past it would
+      leave every customer after the first page with no route to their
+      ledger, which is the one thing this page exists to provide.
+      Rendered as a nav so the two controls read as a pair, and each says
+      which page it goes to rather than only "next".
+    #}
+    {% if directory.has_previous or directory.has_next %}
+      <nav class="form__actions" aria-label="Customer pages">
+        {% if directory.has_previous %}
+          <a
+            class="btn btn--ghost"
+            href="{{ url_for('chef.customers', page=directory.previous_page) }}"
+          >Back to page {{ directory.previous_page }}</a>
+        {% endif %}
+        {% if directory.has_next %}
+          <a
+            class="btn btn--ghost"
+            href="{{ url_for('chef.customers', page=directory.next_page) }}"
+          >On to page {{ directory.next_page }}</a>
+        {% endif %}
+      </nav>
+    {% endif %}
   {% endif %}
 {% endblock %}

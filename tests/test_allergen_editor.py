@@ -73,7 +73,15 @@ def _dish(db, **overrides) -> str:
 
 
 def _declare(client, item_id, *, plural="components", **fields):
-    data = {"confirm": "1"}
+    """Declare the way the chef does: read the page, then post it back.
+
+    The form pins a review to the ingredient list it was made against, so
+    a post that skips the page skips the stamp — and is refused, exactly
+    as a save from a tab left open while the ingredients changed is.
+    """
+    page = client.get(f"/chef/{plural}/{item_id}/allergens").get_data(as_text=True)
+    stamp = re.search(r'name="ingredients_stamp" value="([^"]*)"', page)
+    data = {"confirm": "1", "ingredients_stamp": stamp.group(1) if stamp else ""}
     data.update(fields)
     return client.post(f"/chef/{plural}/{item_id}/allergens", data=data)
 

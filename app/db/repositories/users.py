@@ -125,8 +125,8 @@ def update_password_hash(user_id: str, password_hash: str) -> None:
 # --- chef scope: deliberately not the signed-in user ------------------------
 
 
-def chef_list_customers(limit: int = 500) -> list[User]:
-    """Every customer account, for the chef's customer index.
+def chef_list_customers(limit: int = 500, *, skip: int = 0) -> list[User]:
+    """One page of customer accounts, for the chef's customer index.
 
     Filtered to `role: "customer"` rather than listing the collection: the
     chef's own account is in `users` too, and a directory that offers the
@@ -134,13 +134,15 @@ def chef_list_customers(limit: int = 500) -> list[User]:
 
     Ordered by display name and then email so the list reads the way the
     chef thinks of a customer, with a stable tiebreak for the accounts
-    that never set a name. Named `chef_*` because the caller is not any
-    of the users being read (02-ARCHITECTURE.md).
+    that never set a name — and a total order, which is what makes paging
+    by offset return each customer exactly once. Named `chef_*` because
+    the caller is not any of the users being read (02-ARCHITECTURE.md).
     """
     cursor = (
         get_db()[COLLECTION]
         .find({"role": Role.CUSTOMER.value})
         .sort([("display_name", ASCENDING), ("email", ASCENDING)])
+        .skip(skip)
         .limit(limit)
     )
     return parse_many(User, cursor)
