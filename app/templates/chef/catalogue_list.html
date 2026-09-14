@@ -9,7 +9,7 @@
   One action, one form POST. Defined here rather than in the shared macros
   file because nothing outside this page uses it.
 #}
-{% macro admin_action(action, label, include_archived, values={}, danger=false) %}
+{% macro admin_action(action, label, include_archived, values={}, danger=false, attention_only=false) %}
   <form class="admin-action" method="post" action="{{ action }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for name, value in values.items() %}
@@ -17,6 +17,9 @@
     {% endfor %}
     {% if include_archived %}
       <input type="hidden" name="include_archived" value="1">
+    {% endif %}
+    {% if attention_only %}
+      <input type="hidden" name="attention_only" value="1">
     {% endif %}
     <button
       class="btn {{ 'btn--danger' if danger else 'btn--ghost' }}"
@@ -48,18 +51,78 @@
       New {{ kind }}
     </a>
     {% if listing.include_archived %}
-      <a class="btn btn--ghost" href="{{ url_for('chef.' ~ plural_url) }}">
-        Hide archived
-      </a>
+      <a
+        class="btn btn--ghost"
+        href="{{ url_for('chef.' ~ plural_url, attention=1 if listing.attention_only else none) }}"
+      >Hide archived</a>
     {% else %}
       <a
         class="btn btn--ghost"
-        href="{{ url_for('chef.' ~ plural_url, archived=1) }}"
+        href="{{ url_for('chef.' ~ plural_url, archived=1, attention=1 if listing.attention_only else none) }}"
       >Show archived</a>
+    {% endif %}
+
+    {#
+      The one place the chef can find every declaration that wants
+      looking at. Four states in one list — never reviewed, reviewed
+      before the ingredients changed, written in retired wording, and a
+      sulphites flag that disagrees with its declaration — because the
+      wheat/gluten split shipped with no migration deliberately, and that
+      decision only holds if the affected items can be *found*.
+
+      A link, not a script: every view of this list is a URL.
+    #}
+    {% if listing.attention_only %}
+      <a
+        class="btn btn--ghost"
+        href="{{ url_for('chef.' ~ plural_url, archived=1 if listing.include_archived else none) }}"
+      >Show all {{ plural | lower }}</a>
+    {% elif listing.attention_count %}
+      <a
+        class="btn btn--ghost"
+        href="{{ url_for('chef.' ~ plural_url, attention=1, archived=1 if listing.include_archived else none) }}"
+      >Needs allergen attention ({{ listing.attention_count }})</a>
     {% endif %}
   </p>
 
-  {% if listing.is_empty %}
+  {% if listing.attention_only %}
+    <p class="notice" role="status">
+      Showing the {{ listing.attention_count }}
+      {{ kind }}{{ '' if listing.attention_count == 1 else 's' }} whose
+      allergen declaration needs looking at: never reviewed, reviewed before
+      the ingredients changed, written in wording that has since been
+      retired, or carrying a sulphites flag that disagrees with the
+      declaration beside it.
+      {#
+        Said plainly, because this page must never be mistaken for one
+        that can fix anything. Nothing is re-declared in bulk — every
+        declaration is authored one at a time, by a person, on the
+        allergen editor. That is the whole reason the wheat/gluten split
+        shipped without a migration.
+      #}
+      Each one is re-declared on its own allergen editor. Nothing here
+      changes a declaration.
+    </p>
+  {% elif listing.attention_count %}
+    <p class="notice" role="status">
+      {{ listing.attention_count }}
+      {{ kind }}{{ '' if listing.attention_count == 1 else 's' }} in this
+      catalogue {{ 'has' if listing.attention_count == 1 else 'have' }} an
+      allergen declaration that needs looking at.
+    </p>
+  {% endif %}
+
+  {% if listing.is_empty and listing.attention_only %}
+    {# An empty filtered list means nothing needs attention, which is not
+       the same thing as an empty catalogue — and offering "create the
+       first one" here would be answering a question nobody asked. #}
+    <p class="notice" role="status">
+      No {{ kind }} needs allergen attention. Every declaration in this
+      catalogue has been reviewed, against the ingredients as they stand,
+      in the current wording.
+      <a href="{{ url_for('chef.' ~ plural_url, archived=1 if listing.include_archived else none) }}">Show all {{ plural | lower }}</a>.
+    </p>
+  {% elif listing.is_empty %}
     <p class="notice">
       No {{ kind }}s yet.
       <a href="{{ url_for('chef.new_item', plural=plural_url) }}">Create the first one.</a>
@@ -97,14 +160,33 @@
           {#
             Advisory, and it says so. 04-WORKFLOWS.md: editing ingredients
             on a reviewed item prompts for re-review — it does not
-            invalidate the item and does not unpublish it.
+            invalidate the item and does not unpublish it. The same is
+            true of retired wording and a disagreeing sulphites mirror:
+            both are *reported* and never repaired automatically.
+
+            In words, not a colour. `notice--pending` tints a block that
+            already reads correctly, and each reason is a sentence.
           #}
-          {% if item.allergen_review_is_stale %}
-            <p class="notice notice--pending" role="status">
-              The ingredients changed after this item's allergen declaration
-              was last reviewed. The declaration still stands; check whether
-              it is still right.
-            </p>
+          {% if row.needs_allergen_attention %}
+            <div class="notice notice--pending" role="status">
+              <p class="admin-item__attention-heading">
+                This {{ kind }}'s allergen declaration needs looking at
+              </p>
+              <ul class="admin-item__attention">
+                {% for reason in row.attention_reasons %}
+                  <li>{{ reason }}.</li>
+                {% endfor %}
+              </ul>
+              <p>
+                {% if item.allergens.is_reviewed %}
+                  The declaration still stands and this {{ kind }} is not
+                  withdrawn — check whether it is still right.
+                {% else %}
+                  This {{ kind }} cannot be made available to customers until
+                  it has been reviewed.
+                {% endif %}
+              </p>
+            </div>
           {% endif %}
 
           <div class="admin-item__actions">
@@ -132,12 +214,12 @@
             {% if item.is_available %}
               {{ admin_action(
                    url_for('chef.set_availability', plural=plural_url, item_id=item.id),
-                   'Withdraw ' ~ item.name, listing.include_archived) }}
+                   'Withdraw ' ~ item.name, listing.include_archived, attention_only=listing.attention_only) }}
             {% elif row.can_be_made_available %}
               {{ admin_action(
                    url_for('chef.set_availability', plural=plural_url, item_id=item.id),
                    'Make ' ~ item.name ~ ' available', listing.include_archived,
-                   {'available': '1'}) }}
+                   {'available': '1'}, attention_only=listing.attention_only) }}
             {% elif not item.is_archived %}
               <p class="admin-item__blocked">
                 Review the allergen declaration before making this available.
@@ -147,25 +229,26 @@
             {% if item.is_archived %}
               {{ admin_action(
                    url_for('chef.set_archived', plural=plural_url, item_id=item.id),
-                   'Restore ' ~ item.name, listing.include_archived) }}
+                   'Restore ' ~ item.name, listing.include_archived, attention_only=listing.attention_only) }}
             {% else %}
               {{ admin_action(
                    url_for('chef.set_archived', plural=plural_url, item_id=item.id),
                    'Archive ' ~ item.name, listing.include_archived,
-                   {'archive': '1'}, danger=true) }}
+                   {'archive': '1'}, danger=true,
+                   attention_only=listing.attention_only) }}
             {% endif %}
 
             {% if not loop.first %}
               {{ admin_action(
                    url_for('chef.move_item', plural=plural_url, item_id=item.id),
                    'Move ' ~ item.name ~ ' up', listing.include_archived,
-                   {'direction': 'up'}) }}
+                   {'direction': 'up'}, attention_only=listing.attention_only) }}
             {% endif %}
             {% if not loop.last %}
               {{ admin_action(
                    url_for('chef.move_item', plural=plural_url, item_id=item.id),
                    'Move ' ~ item.name ~ ' down', listing.include_archived,
-                   {'direction': 'down'}) }}
+                   {'direction': 'down'}, attention_only=listing.attention_only) }}
             {% endif %}
           </div>
         </li>
