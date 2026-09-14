@@ -283,3 +283,27 @@ def list_dishes_for_cart(ids: Sequence[str]) -> list[Dish]:
     cursor = get_db()[COLLECTION].find({"_id": {"$in": object_ids}})
     found = {str(document["_id"]): document for document in cursor}
     return parse_many(Dish, [found[value] for value in wanted if value in found])
+
+
+def chef_dish_names_by_meal_type(meal_type_id: str, limit: int = 5) -> list[str]:
+    """Names of dishes referencing this meal type, newest ordering first.
+
+    Archived dishes are included on purpose. An archived dish is withdrawn
+    from customers, not deleted — restoring one whose meal type had been
+    removed underneath it would leave it pointing at a `/menu` slug that
+    resolves to nothing. Bounded because this feeds a refusal message, and
+    a refusal that lists forty dishes is one nobody reads; the caller asks
+    `chef_count_dishes_by_meal_type` for the number.
+    """
+    cursor = (
+        get_db()[COLLECTION]
+        .find({"meal_type_ids": meal_type_id}, projection={"name": 1})
+        .sort([("sort_order", ASCENDING), ("name", ASCENDING)])
+        .limit(limit)
+    )
+    return [str(document.get("name", "")) for document in cursor]
+
+
+def chef_count_dishes_by_meal_type(meal_type_id: str) -> int:
+    """How many dishes reference this meal type, archived ones included."""
+    return get_db()[COLLECTION].count_documents({"meal_type_ids": meal_type_id})

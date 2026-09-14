@@ -432,7 +432,13 @@
 
         <div class="filters__options">
           {% if not meal_types %}
-            <p class="form__hint">No meal types exist yet.</p>
+            {# The dead end this control used to be. It now says where the
+               list comes from, because until one exists this dish cannot
+               reach `/menu` at all. #}
+            <p class="form__hint">
+              No meal types exist yet, so this dish cannot appear on a menu.
+              <a href="{{ url_for('chef.meal_types') }}">Create one</a> first.
+            </p>
           {% endif %}
           {% for choice in meal_types %}
             <div class="form__choice">
