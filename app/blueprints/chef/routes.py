@@ -21,6 +21,7 @@ from app.security.decorators import chef_required
 from app.services import (
     allergen_editor,
     catalogue_admin,
+    chef_credentials,
     chef_ledger,
     chef_orders,
     meal_type_admin,
@@ -492,8 +493,15 @@ def _customer_or_404(user_id: str):
     return customer
 
 
-def _ledger_context(customer, submitted=None) -> dict:
-    """What the ledger page renders from, with or without a rejected form."""
+def _ledger_context(customer, submitted=None, issued_password=None) -> dict:
+    """What the ledger page renders from, with or without a rejected form.
+
+    `issued_password` is the one-shot plaintext from a password reset. It
+    reaches the template through the context of the response that set it
+    and by no other route — deliberately not a flash, which outlives its
+    redirect and has already once in this codebase been rendered to
+    whoever signed in next on the same browser.
+    """
     context = {
         "ledger": chef_ledger.customer_ledger(customer),
         "entry_types": [
@@ -505,6 +513,8 @@ def _ledger_context(customer, submitted=None) -> dict:
     }
     if submitted is not None:
         context["submitted"] = submitted
+    if issued_password is not None:
+        context["issued_password"] = issued_password
     return context
 
 
@@ -532,6 +542,38 @@ def customer_ledger(user_id: str) -> str:
     """One customer's entries and their running balance."""
     customer = _customer_or_404(user_id)
     return render_template("chef/ledger.html", **_ledger_context(customer))
+
+
+@bp.post("/customers/<user_id>/password")
+@chef_required
+def set_customer_password(user_id: str):
+    """Set a new password on one customer and show it once.
+
+    04-WORKFLOWS.md keeps notifications out of v1, so there is no channel
+    to send a reset token over — the chef reads the new password out over
+    the phone, which is the channel the kitchen has. `chef_credentials`
+    carries the reasoning.
+
+    This answers **200 with the page**, not a redirect. The password has
+    to survive exactly one response and no longer, and every way of
+    carrying a value across a redirect — a flash, the session, a query
+    string — keeps it somewhere it can be read again.
+    """
+    customer = _customer_or_404(user_id)
+
+    try:
+        password = chef_credentials.set_password(current_user, customer)
+    except chef_credentials.PasswordResetError as error:
+        flash(str(error), "error")
+        return (
+            render_template("chef/ledger.html", **_ledger_context(customer)),
+            400,
+        )
+
+    return render_template(
+        "chef/ledger.html",
+        **_ledger_context(customer, issued_password=password),
+    )
 
 
 @bp.post("/customers/<user_id>/ledger")

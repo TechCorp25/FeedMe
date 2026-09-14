@@ -51,6 +51,69 @@
     </p>
   {% endif %}
 
+  {#
+    Account access, not money — so it sits above the ledger rather than
+    inside it. A password change carries no amount and is deliberately
+    not an entry below: `account_ledger` is an append-only record of
+    money, and every row in it is summed into the balance. See
+    `services/chef_credentials.py`.
+  #}
+  <section aria-labelledby="account-access">
+    <h2 class="prep__heading" id="account-access">Account access</h2>
+
+    {% if issued_password is defined %}
+      {#
+        Shown exactly once, in the response that set it. It is not
+        flashed and not redirected to: a flash outlives its redirect,
+        and reloading this page will not bring it back.
+      #}
+      <div class="issued-once" role="status">
+        <h3 class="issued-once__heading">New password for {{ customer_name }}</h3>
+        <p>
+          Read this out to {{ customer_name }} now. It is shown once and
+          cannot be shown again — reloading this page will not bring it
+          back. If it is lost, set another one.
+        </p>
+        <code class="issued-password">{{ issued_password }}</code>
+        <p>
+          Their previous password no longer works. Tell them to sign in with
+          this and to change it to something of their own.
+        </p>
+      </div>
+    {% endif %}
+
+    <div class="danger-block">
+      <h3 class="danger-block__heading">Set a new password</h3>
+      <p>
+        {#
+          Why there is no "send a reset link" here, said where somebody
+          would look for one. 04-WORKFLOWS.md keeps notifications out of
+          v1, so there is no channel to send a token over.
+        #}
+        There is no email in this application yet, so there is no reset link
+        to send. This sets a new password immediately and shows it to you
+        once, to read out over the phone. It does not show you their old
+        password — nothing can, only the hash is stored.
+      </p>
+      <p>
+        Their old password stops working straight away. A browser they are
+        already signed in on stays signed in, because a session here is a
+        cookie rather than a record this application can revoke.
+      </p>
+      <form
+        method="post"
+        action="{{ url_for('chef.set_customer_password', user_id=customer.id) }}"
+      >
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn--danger" type="submit">
+          Set a new password for {{ customer_name }}
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <h2 class="prep__heading">Ledger entries</h2>
+
   {% if ledger.is_empty %}
     <p class="notice">No entries yet.</p>
   {% else %}

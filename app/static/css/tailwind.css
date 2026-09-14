@@ -1085,6 +1085,28 @@
     @apply m-0 font-display text-base uppercase tracking-widest text-danger;
   }
 
+  /* The one-shot password the chef reads out over the phone. Large,
+     spaced and letter-by-letter legible, because it is going to be
+     dictated: `tracking-widest` is doing a job here, not a decorative
+     one. Set on `surface` inside the `success-soft` block that frames it
+     so the characters keep their 4.5:1 against the ground they sit on.
+
+     No new colour token. This is the `success` pair reporting an outcome,
+     which is the job 03-FRONTEND.md already gives it. */
+  .issued-password {
+    @apply mt-2 block select-all overflow-x-auto border-2 border-ink
+           bg-surface p-4 text-center font-display text-xl tracking-widest
+           text-ink;
+  }
+
+  .issued-once {
+    @apply mt-10 flex flex-col gap-3 border-2 border-success bg-success-soft p-4;
+  }
+
+  .issued-once__heading {
+    @apply m-0 font-display text-base uppercase tracking-widest text-success;
+  }
+
   .btn--danger {
     @apply border-danger bg-transparent text-danger hover:border-danger
            hover:bg-danger hover:text-surface;
