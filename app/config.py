@@ -74,6 +74,15 @@ class BaseConfig:
     MONGO_SERVER_SELECTION_TIMEOUT_MS = 5000
     STORAGE_BACKEND = "local"
 
+    #: The hard ceiling on a request body, deliberately set *above*
+    #: `catalogue_images.MAX_UPLOAD_BYTES`. Werkzeug answers anything over
+    #: this with a bare 413 before a view function runs, which is a page
+    #: the chef cannot act on. Leaving headroom means an oversized
+    #: photograph is refused by the image service instead, in a sentence
+    #: that says what to do about it; this only stops a body large enough
+    #: that reading it is the attack.
+    MAX_CONTENT_LENGTH = 24 * 1024 * 1024
+
     #: The kitchen's own clock. Every stored timestamp is UTC, but a
     #: *date* a customer chooses is a local one: for the ten hours between
     #: Melbourne midnight and UTC midnight, "today" in UTC is yesterday

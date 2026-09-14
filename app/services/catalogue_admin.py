@@ -40,6 +40,7 @@ from app.db.repositories import components as components_repo
 from app.db.repositories import dishes as dishes_repo
 from app.db.repositories import meal_types as meal_types_repo
 from app.models.base import utcnow
+from app.services import catalogue_images
 from app.models.catalogue import (
     KNOWN_PREFERENCE_FLAGS,
     Component,
@@ -85,6 +86,12 @@ MAX_PRICE_CENTS = 1_000_000
 
 class ItemFormError(ValueError):
     """A refusal the chef can fix, with the wording to show them."""
+
+
+#: An image refusal reaches the chef the same way every other one does.
+#: `catalogue_images` raises its own type so the module stays independent
+#: of this one; the route catches `ItemFormError`, so it is re-raised as
+#: one at the boundary rather than caught twice everywhere.
 
 
 def _repo(kind: str):
@@ -321,12 +328,96 @@ def offered_flags(stored: list[str]) -> list[str]:
     return list(dict.fromkeys([*KNOWN_PREFERENCE_FLAGS, *stored]))
 
 
-def parse_item_form(kind: str, form, *, existing: ItemBase | None) -> dict[str, Any]:
+def _parse_image(form, files, *, slug: str, existing: ItemBase | None) -> dict[str, Any]:
+    try:
+        return _parse_image_inner(form, files, slug=slug, existing=existing)
+    except catalogue_images.ImageError as error:
+        # Re-raised at the boundary so the route keeps catching one
+        # exception type. `catalogue_images` raises its own so it does not
+        # have to import this module.
+        raise ItemFormError(str(error)) from error
+
+
+def _parse_image_inner(
+    form, files, *, slug: str, existing: ItemBase | None
+) -> dict[str, Any]:
+    """The image fields, from an upload, a removal, or what is stored.
+
+    Three cases, and the third is the common one:
+
+    - A new file was chosen. It is validated by decoding it, resized into
+      the rendition ladder, written through `StorageBackend`, and the old
+      renditions are deleted. The chef must describe it.
+    - "Remove the image" was ticked. Every rendition is deleted and all
+      four fields are cleared together.
+    - Neither. The stored image is kept, and only its `alt` can be edited
+      — a description is text, and re-uploading a photograph to correct a
+      typo in its description would be absurd.
+
+    `image_path` is never typed. It used to be a free-text field on this
+    form, which meant a chef could put anything in it, including a URL —
+    and 01-DOMAIN.md is explicit that it is a storage-interface path and
+    not one.
+    """
+    raw = catalogue_images.read_upload(files.get("image") if files else None)
+    removing = bool(form.get("image_remove"))
+    stored_path = existing.image_path if existing else None
+
+    if raw is not None:
+        stored = catalogue_images.store(raw, slug=slug)
+        # Deleted only once the new set is safely written: a failure
+        # halfway through an upload should leave the old picture showing,
+        # not leave the item with none.
+        catalogue_images.delete(stored_path)
+        return {
+            "image_path": stored.path,
+            "image_alt": catalogue_images.parse_alt(
+                form.get("image_alt"), required=True
+            ),
+            "image_width": stored.width,
+            "image_height": stored.height,
+        }
+
+    if removing:
+        catalogue_images.delete(stored_path)
+        return {
+            "image_path": None,
+            "image_alt": None,
+            "image_width": None,
+            "image_height": None,
+        }
+
+    if existing is None or not stored_path:
+        return {
+            "image_path": None,
+            "image_alt": None,
+            "image_width": None,
+            "image_height": None,
+        }
+
+    return {
+        "image_path": stored_path,
+        "image_alt": catalogue_images.parse_alt(
+            form.get("image_alt"), required=True
+        ),
+        "image_width": existing.image_width,
+        "image_height": existing.image_height,
+    }
+
+
+def parse_item_form(
+    kind: str, form, *, existing: ItemBase | None, files=None
+) -> dict[str, Any]:
     """Everything the editor owns, parsed and bounded. Never a raw form.
 
     Deliberately returns a plain dict rather than a model: the caller
     validates it against the *stored* allergen block, and writes back
     only these keys.
+
+    `files` is `request.files`. It is a separate argument rather than
+    something read off `form`, because a multipart upload is not a form
+    field and because passing it explicitly keeps this function callable
+    from a test without a request.
     """
     name = _bounded(form.get("name"), MAX_NAME, "The name")
     if not name:
@@ -340,15 +431,18 @@ def parse_item_form(kind: str, form, *, existing: ItemBase | None) -> dict[str, 
         )
 
     stored_flags = list(existing.preference_flags) if existing else []
+    fields: dict[str, Any] = dict(
+        _parse_image(form, files, slug=slug, existing=existing)
+    )
 
-    fields: dict[str, Any] = {
+
+    fields.update({
         "name": name,
         "slug": slug,
         "summary": _bounded(form.get("summary"), MAX_SUMMARY, "The summary"),
         "description": _bounded(
             form.get("description"), MAX_DESCRIPTION, "The description"
         ),
-        "image_path": _optional(form.get("image_path"), MAX_TEXT, "The image path"),
         "price_cents": parse_price_cents(form.get("price")),
         "unit": _unit(form.get("unit")),
         "ingredients": parse_ingredients(form),
@@ -356,7 +450,7 @@ def parse_item_form(kind: str, form, *, existing: ItemBase | None) -> dict[str, 
         "preparation": parse_preparation(form),
         "preference_flags": parse_preference_flags(form, stored=stored_flags),
         "spice_level": _int(form.get("spice_level"), "The spice level", maximum=5) or 0,
-    }
+    })
 
     if kind == COMPONENT:
         fields["category"] = _component_category(form.get("category")).value
@@ -507,13 +601,13 @@ def _first_message(error: ValidationError) -> str:
     return message.removeprefix("Value error, ")
 
 
-def save_item(kind: str, item_id: str | None, form) -> ItemBase:
+def save_item(kind: str, item_id: str | None, form, files=None) -> ItemBase:
     """Create or update one item. Raises `ItemFormError` on a refusal."""
     existing = get_item(kind, item_id) if item_id else None
     if item_id and existing is None:
         raise ItemFormError("That item no longer exists.")
 
-    fields = parse_item_form(kind, form, existing=existing)
+    fields = parse_item_form(kind, form, existing=existing, files=files)
     validated = _validate(kind, fields, existing)
 
     if existing is None:
@@ -739,6 +833,12 @@ def form_context(kind: str, item: ItemBase | None) -> dict[str, Any]:
         ],
         "blank_rows": BLANK_ROWS,
         "price_value": format_price_input(item.price_cents) if item else "",
+        "image_limits": {
+            "max_mb": catalogue_images.MAX_UPLOAD_BYTES // (1024 * 1024),
+            "min_edge": catalogue_images.MIN_EDGE,
+            "max_alt": catalogue_images.MAX_ALT,
+            "formats": "JPEG, PNG or WebP",
+        },
         "limits": {
             "name": MAX_NAME,
             "summary": MAX_SUMMARY,

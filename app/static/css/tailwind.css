@@ -348,6 +348,26 @@
     @apply border-t-accent hover:border-accent;
   }
 
+  /* The photograph at the top of a card. `aspect-ratio` with
+     `object-fit: cover` is what makes a row of cards line up when the
+     chef's photographs are not all the same shape — the box is the
+     card's, the crop is the browser's. It carries `width` and `height`
+     attributes as well, so the space is reserved before the bytes land.
+
+     A card with no image has no element here at all, so nothing below
+     moves up into a gap: there is no gap. The layout does not depend on
+     a placeholder existing (see `macros/images.html`). */
+  .card__image {
+    @apply block aspect-[4/3] w-full border-b-2 border-ink bg-sunken object-cover;
+  }
+
+  /* The item page's own image: the reading column's width, its own
+     proportions kept rather than cropped, because this is the picture
+     rather than a thumbnail of it. */
+  .item-header__image {
+    @apply mb-6 block h-auto w-full max-w-full border-2 border-ink bg-sunken;
+  }
+
   .card__body {
     @apply flex h-full flex-col gap-2 p-4;
   }
@@ -903,6 +923,12 @@
     @apply flex min-h-touch cursor-pointer items-center self-stretch;
   }
 
+  /* The photograph already on an item, shown beside the control that
+     replaces it, so the chef can see what they are about to change. */
+  .form__image-preview {
+    @apply mb-3 block h-auto w-60 max-w-full border-2 border-ink bg-sunken;
+  }
+
   .form__actions {
     @apply flex flex-wrap items-center gap-3;
   }
@@ -1427,6 +1453,11 @@
     --color-danger-soft: 255 255 255;
     --color-info: 21 63 111;
     --color-info-soft: 255 255 255;
+  }
+
+  .card__image,
+  .item-header__image {
+    display: none;
   }
 
   .prep tbody tr,

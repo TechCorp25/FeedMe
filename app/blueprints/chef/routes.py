@@ -253,7 +253,12 @@ def save_item(plural: str, item_id: str | None = None):
     existing = _item_or_404(kind, item_id) if item_id else None
 
     try:
-        item = catalogue_admin.save_item(kind, item_id, request.form)
+        # `request.files` is passed explicitly: a multipart upload is not
+        # a form field, and the service takes it as an argument rather
+        # than reaching for the request itself.
+        item = catalogue_admin.save_item(
+            kind, item_id, request.form, request.files
+        )
     except catalogue_admin.ItemFormError as error:
         flash(str(error), "error")
         context = catalogue_admin.form_context(kind, existing)

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "macros/item_tabs.html" as tab_macros %}
 {% import "macros/cart.html" as cart_macros %}
+{% import "macros/images.html" as image_macros %}
 
 {% block title %}{{ item.name }} — FeedMe{% endblock %}
 
@@ -17,6 +18,14 @@
   </nav>
 
   <header class="item-header">
+    {#
+      Content, not decoration: this one carries the chef's own
+      description of the photograph. It is the page's own image and is
+      above the fold, so it loads eagerly. It is deliberately here in the
+      header and nowhere near the allergen tab below — an allergen
+      surface is a compliance surface and carries no picture.
+    #}
+    {{ image_macros.item_image(item, DETAIL_SIZES, 'item-header__image', lazy=false) }}
     <h1 class="page__title">{{ item.name }}</h1>
     {% if item.summary %}
       <p class="page__lede">{{ item.summary }}</p>

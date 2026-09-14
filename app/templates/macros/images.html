@@ -1,0 +1,50 @@
+{#
+  Catalogue images. One macro, two surfaces, and nothing here builds a
+  filesystem path or a bucket URL — every `src` is `public.item_image`,
+  which reads the object back through `StorageBackend`. The URL and the
+  `srcset` are both produced by `services/catalogue_images.py`; this
+  template never slices or joins a path, which is what keeps `image_path`
+  a storage-interface path rather than a URL that has leaked into a
+  catalogue document (01-DOMAIN.md).
+
+  `03-FRONTEND.md` sets what this renders to: `srcset` + `sizes`,
+  `loading="lazy"` below the fold, and explicit `width`/`height` so
+  nothing shifts as images land.
+
+  **An item with no image renders nothing at all** — no placeholder, no
+  empty box, no aspect-ratio spacer. That is a decision, not an omission.
+  A placeholder is a picture of nothing, it costs a request to say so, and
+  on a catalogue whose whole job is to describe food accurately an
+  invented image is the wrong default. The card's layout does not depend
+  on one existing: the image is not what holds a card together — the text
+  block is, and the price is already pinned to the foot of the card — so a
+  row lines up whether none, some or all of them have a photograph.
+#}
+
+{#
+  `lazy` is the caller's to state, because only the caller knows whether
+  this one is above the fold.
+
+  So is `alt`, and the two surfaces answer it differently. On a card the
+  image is **decorative** and takes `alt=""`: the card's own heading link
+  states the item's name immediately beside it, and a screen reader
+  announcing the same name twice is worse than not announcing the picture
+  at all. On the item page the image is **content** and carries the chef's
+  own description — which is why the editor requires one and refuses to
+  default it to the item's name.
+#}
+{% macro item_image(item, sizes, css_class, alt=none, lazy=true) %}
+  {%- if item.has_image -%}
+    <img
+      class="{{ css_class }}"
+      src="{{ image_url(item.image_path) }}"
+      srcset="{{ image_srcset(item) }}"
+      sizes="{{ sizes }}"
+      width="{{ item.image_width }}"
+      height="{{ item.image_height }}"
+      loading="{{ 'lazy' if lazy else 'eager' }}"
+      decoding="async"
+      alt="{{ alt if alt is not none else item.image_alt }}"
+    >
+  {%- endif -%}
+{% endmacro %}

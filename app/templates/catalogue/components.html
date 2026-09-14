@@ -37,7 +37,8 @@
              item,
              url_for('public.component_detail', slug=item.slug),
              browse.cautions_for(item),
-             'component') }}
+             'component',
+             loop.first) }}
       {% endfor %}
     </ul>
   {% endif %}

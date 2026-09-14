@@ -6,13 +6,15 @@ enhances the tab strip; it never gates content (00-SYSTEM.md).
 
 from __future__ import annotations
 
-from flask import abort, current_app, render_template, request, url_for
+from flask import abort, current_app, render_template, request, send_file, url_for
 from flask_login import current_user
 
 from app.blueprints.public import bp
 from app.db.client import get_db
 from app.security.decorators import public_route
 from app.services import catalogue
+from app.services.catalogue_images import ITEM_IMAGE_PREFIX
+from app.storage import get_storage
 
 
 #: Present in the query string of any URL that states its own filters,
@@ -179,6 +181,50 @@ def menu(meal_type_slug: str) -> str:
             "public.menu", meal_type_slug=meal_type_slug, **{FILTERS_STATED: 1}
         ),
     )
+
+
+@bp.get("/media/<path:stored_path>")
+@public_route
+def item_image(stored_path: str):
+    """Serve one rendition of a catalogue image, through the backend.
+
+    This route is the only thing that turns a stored `image_path` into
+    something a browser can fetch. 01-DOMAIN.md says an `image_path` is a
+    storage-interface path and not a URL, so no template builds a
+    filesystem path or a bucket address — every `src` on the site points
+    here, and the day the backend changes to object storage not one
+    catalogue document changes with it.
+
+    Public, because the catalogue is. The pictures it serves belong to
+    items a signed-out visitor can already browse, and an image behind a
+    login on a public catalogue is a broken card.
+
+    The path is constrained twice over: only `items/` is served from
+    here, and `LocalStorage._resolve` refuses an absolute path or one
+    containing `..` whatever reaches it. A traversal attempt is a 404
+    rather than an error page — a path that names nothing is not found,
+    and saying more would describe the shape of the store.
+    """
+    if not stored_path.startswith(f"{ITEM_IMAGE_PREFIX}/"):
+        abort(404)
+    path = stored_path
+    storage = get_storage()
+    try:
+        if not storage.exists(path):
+            abort(404)
+        handle = storage.open(path)
+    except ValueError:
+        # The backend refused the path itself. Not found, not a 500: this
+        # is an address that names nothing, and saying more would describe
+        # the shape of the store.
+        abort(404)
+
+    response = send_file(handle, mimetype="image/jpeg", conditional=False)
+    # Renditions are immutable: a re-upload writes a new random stem
+    # rather than replacing these bytes, so nothing at this URL ever
+    # changes and a long cache cannot serve a stale picture.
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
 
 
 @bp.get("/health")
