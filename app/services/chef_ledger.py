@@ -34,6 +34,10 @@ from app.models.users import User
 #: How many entries one page shows, windowed from the newest end.
 LEDGER_LIMIT = 200
 
+#: How many customers the index lists. One kitchen, one chef; a bound
+#: rather than a pagination scheme, and the page says when it is reached.
+CUSTOMER_LIMIT = 500
+
 MAX_DESCRIPTION = 500
 #: $10,000 in cents. A bound on a typo, not on the business.
 MAX_AMOUNT_CENTS = 1_000_000
@@ -130,6 +134,60 @@ def parse_amount_cents(raw: str | None) -> int:
     if cents > MAX_AMOUNT_CENTS:
         raise LedgerEntryError("That amount looks wrong — check it and try again.")
     return cents
+
+
+@dataclass(frozen=True)
+class CustomerRow:
+    """One customer in the index, with the figure the chef looks for."""
+
+    customer: User
+    balance_cents: int
+
+    @property
+    def name(self) -> str:
+        """The display name, falling back to the address they signed up with."""
+        return self.customer.display_name or self.customer.email
+
+    @property
+    def has_dietary_notes(self) -> bool:
+        return bool((self.customer.dietary_notes or "").strip())
+
+
+@dataclass(frozen=True)
+class CustomerDirectory:
+    rows: list[CustomerRow]
+    is_truncated: bool = False
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.rows
+
+
+def customer_directory() -> CustomerDirectory:
+    """Every customer, with their balance, for `/chef/customers`.
+
+    04-WORKFLOWS.md gives the ledger a URL and no page to reach it from;
+    the order queue links to a customer who has an order outstanding,
+    which is not the same set. A customer who settled last month still
+    has a ledger.
+
+    Two reads, not one per row: the customers, and every balance in one
+    aggregation. A customer with no entries has nothing to sum and reads
+    as zero, which is what a balance computed by aggregation means when
+    there is nothing to aggregate.
+    """
+    customers = users_repo.chef_list_customers(limit=CUSTOMER_LIMIT)
+    balances = ledger_repo.chef_balances_by_user()
+    return CustomerDirectory(
+        rows=[
+            CustomerRow(
+                customer=customer,
+                balance_cents=balances.get(customer.get_id(), 0),
+            )
+            for customer in customers
+        ],
+        is_truncated=len(customers) >= CUSTOMER_LIMIT,
+    )
 
 
 def get_customer(user_id: str) -> User | None:

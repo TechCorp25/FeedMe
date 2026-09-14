@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
+from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError
 
 from app.db.client import get_db
-from app.db.repositories._common import parse_one, to_object_id
+from app.db.repositories._common import parse_many, parse_one, to_object_id
 from app.models.base import utcnow
-from app.models.users import User
+from app.models.users import Role, User
 
 COLLECTION = "users"
 
@@ -122,6 +123,27 @@ def update_password_hash(user_id: str, password_hash: str) -> None:
 
 
 # --- chef scope: deliberately not the signed-in user ------------------------
+
+
+def chef_list_customers(limit: int = 500) -> list[User]:
+    """Every customer account, for the chef's customer index.
+
+    Filtered to `role: "customer"` rather than listing the collection: the
+    chef's own account is in `users` too, and a directory that offers the
+    chef a ledger of their own is a page with a dead end on it.
+
+    Ordered by display name and then email so the list reads the way the
+    chef thinks of a customer, with a stable tiebreak for the accounts
+    that never set a name. Named `chef_*` because the caller is not any
+    of the users being read (02-ARCHITECTURE.md).
+    """
+    cursor = (
+        get_db()[COLLECTION]
+        .find({"role": Role.CUSTOMER.value})
+        .sort([("display_name", ASCENDING), ("email", ASCENDING)])
+        .limit(limit)
+    )
+    return parse_many(User, cursor)
 
 
 def chef_list_customers_by_ids(user_ids: Sequence[str]) -> dict[str, User]:

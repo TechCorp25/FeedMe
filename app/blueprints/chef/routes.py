@@ -343,6 +343,21 @@ def _ledger_context(customer, submitted=None) -> dict:
     return context
 
 
+@bp.get("/customers")
+@chef_required
+def customers() -> str:
+    """Every customer, and the way in to each one's ledger.
+
+    04-WORKFLOWS.md gives the ledger a URL and nothing to reach it from.
+    The order queue links to it, but only for a customer with an order
+    outstanding — and a customer who settled last month still has a
+    ledger to read and a credit that may need writing.
+    """
+    return render_template(
+        "chef/customers.html", directory=chef_ledger.customer_directory()
+    )
+
+
 @bp.get("/customers/<user_id>/ledger")
 @chef_required
 def customer_ledger(user_id: str) -> str:

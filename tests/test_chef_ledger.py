@@ -392,3 +392,117 @@ def test_the_ledger_page_needs_no_javascript(signed_in, customer):
     assert 'name="csrf_token"' in page
     # Said on the page, not only enforced in the routes.
     assert "append-only" in page
+
+
+# --- the customer index -----------------------------------------------------
+#
+# 04-WORKFLOWS.md gave the ledger a URL and no page to reach it from. The
+# order queue links to a customer with an order outstanding, which is not
+# the same set as "every customer".
+
+
+def _text(html: str) -> str:
+    """The page as a reader sees it: tags dropped, whitespace collapsed.
+
+    The balance and the words that give it its direction are one
+    sentence on screen and a `<span>` apart in the markup.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+
+
+@pytest.fixture()
+def second_customer(app, db) -> str:
+    with app.app_context():
+        accounts.register_customer(
+            email="bo@example.com",
+            password=PASSWORD,
+            password_confirmation=PASSWORD,
+            display_name="Bo Adeyemi",
+        )
+    return str(db["users"].find_one({"email": "bo@example.com"})["_id"])
+
+
+def test_the_index_lists_every_customer_and_links_to_each_ledger(
+    signed_in, customer, second_customer
+):
+    html = signed_in.get("/chef/customers").get_data(as_text=True)
+
+    assert "Ada Chesterfield" in html
+    assert "Bo Adeyemi" in html
+    assert f"/chef/customers/{customer}/ledger" in html
+    assert f"/chef/customers/{second_customer}/ledger" in html
+
+
+def test_the_index_lists_a_customer_with_no_orders_at_all(
+    signed_in, second_customer
+):
+    """The reason the queue's links are not enough."""
+    html = signed_in.get("/chef/customers").get_data(as_text=True)
+
+    assert "Bo Adeyemi" in html
+
+
+def test_the_chefs_own_account_is_not_a_customer(signed_in, db, chef, customer):
+    """A directory that offers the chef a ledger of their own is a page
+    with a dead end on it. The chef's address still appears in the header
+    as the signed-in account, so this asks for the row, not the string."""
+    chef_id = str(db["users"].find_one({"email": "chef@example.com"})["_id"])
+
+    html = signed_in.get("/chef/customers").get_data(as_text=True)
+
+    assert f"/chef/customers/{chef_id}/ledger" not in html
+    assert f"/chef/customers/{customer}/ledger" in html
+
+
+def test_a_balance_is_shown_with_its_direction_in_words(
+    signed_in, db, customer, second_customer
+):
+    """A sign is one character, and no distinction is carried by colour
+    alone (03-FRONTEND.md)."""
+    _entry(
+        db,
+        customer,
+        entry_type=LedgerEntryType.CHARGE,
+        cents=2500,
+        description="Order MP-2609-0001",
+    )
+
+    text = _text(signed_in.get("/chef/customers").get_data(as_text=True))
+
+    assert "$25.00 owed to the kitchen" in text
+    # A customer with no entries has nothing to sum, and reads as settled.
+    assert "$0.00 — settled" in text
+
+
+def test_a_credit_balance_says_who_it_is_owed_to(signed_in, db, customer):
+    _entry(
+        db,
+        customer,
+        entry_type=LedgerEntryType.CREDIT,
+        cents=-500,
+        description="Cancelled order",
+    )
+
+    assert "owed to the customer" in _text(
+        signed_in.get("/chef/customers").get_data(as_text=True)
+    )
+
+
+def test_the_index_is_not_a_customers_to_read(client, app, db, customer):
+    """`@chef_required` answers a customer with 404, never 403."""
+    client.post("/login", data={"email": "ada@example.com", "password": PASSWORD})
+
+    assert client.get("/chef/customers").status_code == 404
+
+
+def test_dietary_notes_are_flagged_not_quoted(signed_in, db, customer):
+    """They are the customer's own words and belong beside the order."""
+    db["users"].update_one(
+        {"_id": db["users"].find_one({"email": "ada@example.com"})["_id"]},
+        {"$set": {"dietary_notes": "No coriander, it tastes of soap."}},
+    )
+
+    html = signed_in.get("/chef/customers").get_data(as_text=True)
+
+    assert "Has dietary notes." in html
+    assert "tastes of soap" not in html

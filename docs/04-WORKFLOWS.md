@@ -240,6 +240,14 @@ checked mirror of `contains`. That is the point. Before the rule, a block could
 set the flag without the entry, the customer page deliberately rendered nothing
 for that state, and the defect was therefore visible to nobody.
 
+**Customers** — `/chef/customers`
+Every customer account, ordered by name, each with its balance and the way in
+to its ledger. The order queue links to a customer who has an order
+outstanding, which is not the same set — a customer who settled last month
+still has a ledger to read and a credit that may need writing. Balances are one
+aggregation for the whole page, not one per row. Dietary notes are *flagged*
+here and quoted in full only beside the order the chef is cooking.
+
 **Ledger** — `/chef/customers/<user_id>/ledger`
 View entries, add manual `adjustment` or `credit` entries with a description. Entries are append-only; corrections are new offsetting entries, never edits or deletes.
 

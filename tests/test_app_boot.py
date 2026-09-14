@@ -57,3 +57,17 @@ def test_a_route_carries_exactly_one_marker():
 
     with pytest.raises(ValueError, match="already carries"):
         login_required(public_route(view))
+
+
+def test_the_queue_sort_field_is_indexed():
+    """`/chef/orders` sorts on `requested_for` on every request.
+
+    01-DOMAIN.md owns the index list, which is why this was proposed
+    rather than added when the queue was built. The status filter is
+    optional and its default is a `$nin` over the terminal statuses,
+    which no index narrows usefully; the sort is unconditional.
+    """
+    from app.db.indexes import INDEX_SPECS
+
+    keys = [keys for keys, _ in INDEX_SPECS["orders"]]
+    assert [("requested_for", 1)] in keys

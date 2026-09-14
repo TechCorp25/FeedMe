@@ -59,6 +59,13 @@ INDEX_SPECS: dict[str, list[tuple[list[tuple[str, int]], dict]]] = {
             {"name": "user_created_desc"},
         ),
         ([("status", ASCENDING)], {"name": "status"}),
+        # The chef's queue sorts on `requested_for` on every request and
+        # filters on it on some. The status filter is optional and its
+        # default is a `$nin` over the terminal statuses, which no index
+        # narrows usefully; the sort is unconditional, so the sort is the
+        # half worth indexing. The prep sheet reads the same field for one
+        # day, as an equality match this serves too.
+        ([("requested_for", ASCENDING)], {"name": "requested_for"}),
         ([("reference", ASCENDING)], {"name": "reference_unique", "unique": True}),
     ],
     "account_ledger": [

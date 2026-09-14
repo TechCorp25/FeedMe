@@ -55,6 +55,9 @@ preparation        PreparationBlock          tab 4
 preference_flags   [str]                     see below
 spice_level        int                       0-5
 
+# --- review staleness ---
+ingredients_updated_at  datetime | None      when the ingredients last changed
+
 # --- dishes only ---
 component_refs     [str]                     optional provenance links
 serves             int
@@ -70,6 +73,38 @@ is_optional        bool
 ```
 
 Ingredients are ordered, chef-authored, and displayed in authored order. No automatic alphabetisation.
+
+### `ingredients_updated_at` and a stale review
+
+04-WORKFLOWS.md requires that editing the ingredients of an already-reviewed
+item flags its allergen block stale and prompts for re-review — without
+invalidating the item and without unpublishing it. This timestamp is how that
+is stored, and it is the **only** thing stored: staleness is derived, so the
+two can never disagree.
+
+```
+allergen_review_is_stale  ==  allergens.reviewed_at is not None
+                              and ingredients_updated_at is not None
+                              and ingredients_updated_at > allergens.reviewed_at
+```
+
+It is a field on the **item**, deliberately not a boolean inside
+`AllergenBlock`. Allergen fields are never modified by any code path except the
+chef allergen editor, and the thing that makes a declaration stale is an edit
+made by the *catalogue* editor — a flag in the block would have the catalogue
+form writing a compliance field on every save, which is the rule this document
+sets two sections down. The catalogue editor writes this timestamp and touches
+nothing in `allergens`.
+
+The stamp moves only when the ingredients actually changed. A save that
+corrected a price does not demand a re-review of a declaration nobody altered,
+and a prompt that fires on every save is a prompt the chef learns to dismiss.
+
+An **unreviewed** item is never "stale". It is unreviewed, which is a different
+state with different wording and a harder rule: it cannot be published at all.
+A stale item stays available and keeps rendering the declaration it was last
+reviewed with — the true statement of what was last checked — while the chef is
+told to look at it again.
 
 ## Allergens — Australia (FSANZ)
 
@@ -341,6 +376,6 @@ Declared in one bootstrap module, applied at startup, idempotent:
 users:          email (unique)
 components:     slug (unique), category, is_archived+is_available, preference_flags
 dishes:         slug (unique), meal_type_ids, is_archived+is_available, preference_flags
-orders:         user_id+created_at desc, status, reference (unique)
+orders:         user_id+created_at desc, status, requested_for, reference (unique)
 account_ledger: user_id+created_at
 ```

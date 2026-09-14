@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{% block title %}Customers — FeedMe{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.customers') }}
+
+  <p class="page__kicker">Chef admin</p>
+  <h1 class="page__title">Customers</h1>
+  <p class="page__lede">
+    Every customer account, with the balance on each one. The order queue
+    links to a customer who has an order outstanding; this is the way to
+    the rest.
+  </p>
+
+  {% if directory.is_truncated %}
+    <p class="notice notice--pending" role="status">
+      The first {{ directory.rows | length }} customers are shown.
+    </p>
+  {% endif %}
+
+  {% if directory.is_empty %}
+    <p class="notice">No customer accounts yet.</p>
+  {% else %}
+    <ul class="admin-list">
+      {% for row in directory.rows %}
+        <li class="admin-item">
+          <div class="admin-item__head">
+            <h2 class="admin-item__name">
+              <a href="{{ url_for('chef.customer_ledger', user_id=row.customer.id) }}">
+                {{ row.name }}
+              </a>
+            </h2>
+            {#
+              The figure and what it means, in words. A sign is one
+              character and a colour carries no distinction on its own
+              (03-FRONTEND.md), so the direction is spelled out here the
+              same way the ledger page spells it out.
+            #}
+            <p class="admin-item__price">
+              {{ row.balance_cents | price }}
+              <span class="ledger__direction">
+                {%- if row.balance_cents > 0 %} owed to the kitchen
+                {%- elif row.balance_cents < 0 %} owed to the customer
+                {%- else %} — settled{% endif %}
+              </span>
+            </p>
+          </div>
+
+          <p class="admin-item__meta">
+            {{ row.customer.email }}
+            {%- if row.customer.phone %} — {{ row.customer.phone }}{% endif %}
+            {%- if not row.customer.is_active %} — account deactivated{% endif %}
+          </p>
+
+          {#
+            Flagged rather than quoted. Dietary notes are the customer's
+            own words and belong beside the order the chef is cooking,
+            which is where the queue renders them in full.
+          #}
+          {% if row.has_dietary_notes %}
+            <p class="admin-item__meta">Has dietary notes.</p>
+          {% endif %}
+
+          <div class="admin-item__actions">
+            <a
+              class="btn btn--ghost"
+              href="{{ url_for('chef.customer_ledger', user_id=row.customer.id) }}"
+            >Open ledger for {{ row.name }}</a>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}
