@@ -247,14 +247,17 @@ class AllergenBlock(EmbeddedModel):
     def sulphites_threshold_note(self) -> str | None:
         """Threshold wording for a declared sulphites entry, or None.
 
-        `sulphites_declared` records that the level reaches the 10 mg/kg
-        labelling threshold; `contains` is what actually declares the
-        allergen. The note therefore qualifies an existing declaration and
-        never stands in for one — a block whose flag is set without the
-        matching `contains` entry is a data defect for the chef allergen
-        editor to prevent, not something a customer page invents a
-        declaration to cover. The cross-validator that would prevent it is
-        deferred to that editor and recorded in 04-WORKFLOWS.md.
+        `contains` is what declares the allergen; `sulphites_declared`
+        records that the level reaches the 10 mg/kg threshold that makes
+        it declarable at all. The two are now a biconditional enforced by
+        `_check_declaration`, so the flag is a checked mirror of the
+        `contains` entry rather than a second, quieter route to a
+        declaration. The note therefore always qualifies a declaration
+        that is really there.
+
+        Both halves are still read, deliberately. The guard is what makes
+        the property total rather than a promise resting on a validator
+        somewhere else in the file.
         """
         if not (self.sulphites_declared and AllergenCode.SULPHITES in self.contains):
             return None
@@ -311,6 +314,25 @@ class AllergenBlock(EmbeddedModel):
             )
         if self.reviewed_at is not None and not self.reviewed_by:
             raise ValueError("reviewed_by is required once reviewed_at is set")
+        # Sulphites are the one entry with a second field of its own, and
+        # the two have to agree. Schedule 9 item 1 makes sulphites
+        # declarable *only* at 10 mg/kg or above, so a `contains` entry
+        # with the flag false is as incoherent as the flag alone.
+        #
+        # This raises and never fills in. Adding the missing `contains`
+        # entry would author a declaration the chef did not make, which
+        # 00-SYSTEM.md forbids — "never inferred, never auto-generated,
+        # never silently defaulted" — and it is asymmetric besides:
+        # unticking the flag could not retract the entry without the same
+        # inference in reverse. The editor exposes one control, so the
+        # error is unreachable through the UI.
+        if (AllergenCode.SULPHITES in self.contains) != self.sulphites_declared:
+            raise ValueError(
+                "sulphites_declared and a 'sulphites' entry in contains are "
+                "one declaration and move together: sulphites are declarable "
+                "only at 10 mg/kg or above, so neither half means anything "
+                "without the other"
+            )
         duplicated = set(self.contains) & set(self.may_contain)
         if duplicated:
             raise ValueError(

@@ -138,6 +138,14 @@ Rules, enforced in code:
   retired `cereals_gluten` carries the same rule, so a stored block cannot lose
   its cereals on re-read.
 - `tree_nuts` present ⇒ `tree_nut_species` non-empty. Validation error otherwise.
+- `sulphites` in `contains` ⇔ `sulphites_declared`. A biconditional, so the flag
+  is a **checked mirror** of the `contains` entry rather than a second, quieter
+  route to a declaration. Validation error either way round, and it raises rather
+  than filling either half in: adding the `contains` entry would author a
+  declaration the chef did not make, and Schedule 9 item 1 makes sulphites
+  declarable only at ≥10 mg/kg, so an entry with the flag false asserts a
+  threshold nobody recorded. `sulphites_threshold_note` qualifies the chip; it
+  never stands in for it.
 - `reviewed_at` set ⇒ `reviewed_by` non-empty. Validation error otherwise. An unreviewed block carries `None` in both fields; there is no placeholder reviewer.
 - An allergen code is never in both `contains` and `may_contain`. Validation error otherwise — a declared allergen is not simultaneously a cross-contact risk.
 - An item with **no** allergen review (`reviewed_at is None`) cannot be published to customers. See *Publication* below.

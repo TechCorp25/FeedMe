@@ -218,17 +218,23 @@ Full CRUD. Create, edit, archive, reorder, toggle availability. Dish editor incl
 - An item cannot be published while `reviewed_at is None`.
 - Editing ingredients on an already-reviewed item flags the allergen block as stale and surfaces a re-review prompt. It does not silently invalidate the item, and it does not unpublish it — it prompts.
 
-*Deferred, owned by this editor:* `sulphites_declared` and `contains` are not
-cross-validated. A block can set the flag without listing `sulphites` in
-`contains`, and the customer page deliberately renders nothing in that case —
-`AllergenBlock.sulphites_threshold_note` qualifies a declaration and never
-invents one. That leaves the defect visible to nobody. The rule belongs here,
-in the one code path allowed to write the block, and as a model validator
-alongside the `cereals_gluten` and `tree_nuts` rules in 01-DOMAIN.md. It was
-not added with the read-only catalogue slice because a cross-validator changes
-the model contract, and a browse-and-detail change has no business altering
-compliance semantics. Decide the direction when building this editor: either
-the flag requires the `contains` entry, or setting the flag adds it.
+*Decided by this editor:* `sulphites_declared` and `contains` are **one
+declaration**. The rule is a biconditional — `sulphites` in `contains` ⇔
+`sulphites_declared` — enforced as a model validator in 01-DOMAIN.md alongside
+the `gluten` and `tree_nuts` rules, and again here, where the editor exposes
+**one control** so the error is unreachable through the UI.
+
+It raises and never fills in. Auto-adding the `contains` entry would author a
+declaration the chef did not make, which 00-SYSTEM.md forbids — "never inferred,
+never auto-generated, never silently defaulted" — and it is asymmetric besides,
+since unticking the flag could not retract the entry without the same inference
+in reverse. Schedule 9 item 1 makes sulphites declarable *only* at ≥10 mg/kg, so
+a `contains` entry with the flag false is equally incoherent.
+
+What this costs is that the flag is no longer independently meaningful: it is a
+checked mirror of `contains`. That is the point. Before the rule, a block could
+set the flag without the entry, the customer page deliberately rendered nothing
+for that state, and the defect was therefore visible to nobody.
 
 **Ledger** — `/chef/customers/<user_id>/ledger`
 View entries, add manual `adjustment` or `credit` entries with a description. Entries are append-only; corrections are new offsetting entries, never edits or deletes.
