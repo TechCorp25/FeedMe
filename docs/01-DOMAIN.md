@@ -299,9 +299,29 @@ OrderLine:
   item_type ("component" | "dish")
   item_id, name_snapshot, unit_price_cents, quantity, line_total_cents
   allergen_snapshot: AllergenBlock
+  storage_snapshot: StorageBlock | None
 ```
 
-**Snapshotting is mandatory.** Name, price and allergen block are copied onto the line at order time. A later catalogue edit must never retroactively change what a customer was told they were eating.
+**Snapshotting is mandatory.** Name, price, allergen block and storage block
+are copied onto the line at order time. A later catalogue edit must never
+retroactively change what a customer was told they were eating, nor how long
+they were told to keep it.
+
+`storage_snapshot` is the **whole `StorageBlock`**, not `shelf_life_days`
+alone. A date computed from a snapshotted shelf life, sitting beside a method
+and temperature the chef has since changed from "refrigerate" to "freeze", is
+worse than either alone; the allergen block set the precedent that the whole
+compliance block travels with the line.
+
+It is **nullable and never backfilled**. Lines written before the field
+existed have no snapshot, and an item with no storage block of its own has
+none either. Inventing one from today's catalogue would be exactly the
+retroactive edit the snapshot exists to prevent, so there is no migration.
+The customer's use-by (`prepared_at + shelf_life_days`, shortest across
+lines — 04-WORKFLOWS.md) is computed **only when every line carries a
+snapshot**: the shortest of the remaining lines would be a date that does not
+cover the whole order. Otherwise the order page points at the item's current
+guidance, which is what it did before the field existed.
 
 ## account_ledger
 

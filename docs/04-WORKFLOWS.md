@@ -184,18 +184,22 @@ All routes scoped by `user_id` at the repository. Requesting another customer's 
   `last_order_reference`, both survived it and reached whoever signed in
   next on that browser. Both are cleared at sign-out now.
 
-*Deferred, and owned by 01-DOMAIN.md:* **the use-by date.** This document
-computes it as `prepared_at + shelf_life_days` per line, shortest across
-lines. `OrderLine` snapshots the name, the unit price and the allergen
-block, and not the `StorageBlock` — so the shelf life is only readable from
-the catalogue as it stands now, which the chef may have edited since the
-order was prepared. A use-by that has been *lengthened* under a customer is
-the one direction this must never fail in, so the order page points at the
-item's current guidance rather than computing a date it cannot stand
-behind. Closing it means adding a storage snapshot to `OrderLine`, which is
-a change to the order document 01-DOMAIN.md owns. Decide the direction
-there: either the whole `StorageBlock` is snapshotted like the allergen
-block, or `shelf_life_days` alone is.
+*Settled, in 01-DOMAIN.md:* **the use-by date.** `OrderLine` now snapshots
+`storage_snapshot: StorageBlock | None` alongside the allergen block, so the
+shelf life the date is counted from is the one the customer was sold, not the
+one the chef may have edited since. A use-by *lengthened* underneath a customer
+is the one direction this must never fail in.
+
+The whole block travels, not `shelf_life_days` alone: a date beside a method
+and a temperature the chef has since changed is worse than either alone.
+
+The date is computed only when **every** line carries a snapshot. Lines written
+before the field existed have none, and an item with no storage block has none
+either; the shortest of the remaining lines would be a date that does not cover
+the whole order. In that case `/account/orders/<reference>` keeps the pointer to
+the item's current guidance that it carried before, and names the lines it has
+no guidance for. Nothing is backfilled — a snapshot invented from today's
+catalogue is the retroactive edit the snapshot exists to prevent.
 
 ## Chef-admin flows
 

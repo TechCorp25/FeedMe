@@ -23,13 +23,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
+from datetime import date, datetime, timedelta
 
 from app.db.repositories import components as components_repo
 from app.db.repositories import dishes as dishes_repo
 from app.db.repositories import ledger as ledger_repo
 from app.db.repositories import orders as orders_repo
 from app.db.repositories import users as users_repo
-from app.models.catalogue import preference_flag_label
+from app.models.catalogue import StorageBlock, preference_flag_label
 from app.models.orders import (
     LedgerEntry,
     LedgerEntryType,
@@ -38,6 +39,7 @@ from app.models.orders import (
 )
 from app.models.users import User
 from app.services import order_state
+from app.services.dates import to_business_date
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +223,82 @@ def get_order(user_id: str, reference: str) -> Order | None:
     else's order exists (02-ARCHITECTURE.md).
     """
     return orders_repo.get_order_by_reference(user_id, reference)
+
+
+# --- storage and the use-by date --------------------------------------------
+#
+# 04-WORKFLOWS.md: the use-by is `prepared_at + shelf_life_days` per line,
+# showing the **shortest** across lines. It is computed from the line's
+# own `storage_snapshot` and never from the catalogue, which the chef may
+# have edited since the order was prepared.
+#
+# It is computed only when every line carries a snapshot. A line written
+# before the snapshot existed — or one whose item had no storage block at
+# all — contributes no shelf life, and the shortest of the rest would be
+# a date that does not cover the whole order. The page keeps the current-
+# guidance wording in that case rather than naming a day it cannot stand
+# behind. A use-by lengthened underneath a customer is the one direction
+# this must never fail in, and a use-by that quietly omits a line is the
+# same failure wearing a date.
+
+
+@dataclass(frozen=True)
+class LineStorage:
+    """One line's storage guidance, as it was snapshotted."""
+
+    name: str
+    storage: StorageBlock
+
+
+@dataclass(frozen=True)
+class UseByView:
+    """What the order page renders under "Storage and use-by"."""
+
+    prepared_at: datetime | None
+    lines: list[LineStorage]
+    lines_without_guidance: list[str]
+    shelf_life_days: int | None
+    use_by: date | None
+
+    @property
+    def is_complete(self) -> bool:
+        """Every line carries the guidance it was sold with."""
+        return bool(self.lines) and not self.lines_without_guidance
+
+    @property
+    def is_prepared(self) -> bool:
+        return self.prepared_at is not None
+
+
+def use_by_view(order: Order) -> UseByView:
+    """The order's storage snapshots, and the use-by they support."""
+    lines = [
+        LineStorage(name=line.name_snapshot, storage=line.storage_snapshot)
+        for line in order.lines
+        if line.storage_snapshot is not None
+    ]
+    missing = [
+        line.name_snapshot for line in order.lines if line.storage_snapshot is None
+    ]
+
+    shortest = (
+        min(entry.storage.shelf_life_days for entry in lines)
+        if lines and not missing
+        else None
+    )
+    prepared_on = to_business_date(order.prepared_at)
+    use_by = (
+        prepared_on + timedelta(days=shortest)
+        if shortest is not None and prepared_on is not None
+        else None
+    )
+    return UseByView(
+        prepared_at=order.prepared_at,
+        lines=lines,
+        lines_without_guidance=missing,
+        shelf_life_days=shortest,
+        use_by=use_by,
+    )
 
 
 def can_customer_cancel(order: Order) -> bool:
