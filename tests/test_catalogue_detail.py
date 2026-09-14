@@ -37,7 +37,9 @@ def make_component(**overrides) -> Component:
             "may_contain": ["peanut"],
             "gluten_cereals": ["wheat", "rye"],
             "tree_nut_species": ["almond", "cashew"],
-            "sulphites_declared": True,
+            # No sulphites entry in `contains`, so the flag is false. The
+            # two are a biconditional the model enforces.
+            "sulphites_declared": False,
             "chef_note": "Made in a kitchen that also handles shellfish.",
             "reviewed_at": REVIEWED_AT,
             "reviewed_by": "chef",
@@ -134,9 +136,11 @@ def test_the_sulphites_note_qualifies_a_declaration_never_replaces_one(client, d
     """The threshold flag is a qualifier on the chip, not a second route
     to a declaration.
 
-    The fixture item sets `sulphites_declared` without listing sulphites
-    in `contains`. That is a data defect, and the page must not paper over
-    it by asserting a declaration the block does not make.
+    The fixture item declares no sulphites, so nothing on its page says
+    anything about the threshold. The block that *does* declare them
+    carries both the chip and the qualifier. A block with one half and
+    not the other no longer reaches a page at all — the model refuses it
+    (see `test_allergen_models.py`).
     """
     assert "10 mg/kg" not in client.get("/components/harissa").get_data(as_text=True)
 

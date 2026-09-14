@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{% block title %}Customers — FeedMe{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.customers') }}
+
+  <p class="page__kicker">Chef admin</p>
+  <h1 class="page__title">Customers</h1>
+  <p class="page__lede">
+    Every customer account, with the balance on each one. The order queue
+    links to a customer who has an order outstanding; this is the way to
+    the rest.
+  </p>
+
+  {% if directory.is_empty %}
+    <p class="notice">
+      {% if directory.has_previous %}
+        There are no customers on this page.
+        <a href="{{ url_for('chef.customers') }}">Back to the first page</a>.
+      {% else %}
+        No customer accounts yet.
+      {% endif %}
+    </p>
+  {% else %}
+    {% if directory.has_previous or directory.has_next %}
+      <p class="form__hint">
+        Customers {{ directory.first_position }}–{{ directory.last_position }},
+        in name order.
+      </p>
+    {% endif %}
+    <ul class="admin-list">
+      {% for row in directory.rows %}
+        <li class="admin-item">
+          <div class="admin-item__head">
+            <h2 class="admin-item__name">
+              <a href="{{ url_for('chef.customer_ledger', user_id=row.customer.id) }}">
+                {{ row.name }}
+              </a>
+            </h2>
+            {#
+              The figure and what it means, in words. A sign is one
+              character and a colour carries no distinction on its own
+              (03-FRONTEND.md), so the direction is spelled out here the
+              same way the ledger page spells it out.
+            #}
+            <p class="admin-item__price">
+              {{ row.balance_cents | price }}
+              <span class="ledger__direction">
+                {%- if row.balance_cents > 0 %} owed to the kitchen
+                {%- elif row.balance_cents < 0 %} owed to the customer
+                {%- else %} — settled{% endif %}
+              </span>
+            </p>
+          </div>
+
+          <p class="admin-item__meta">
+            {{ row.customer.email }}
+            {%- if row.customer.phone %} — {{ row.customer.phone }}{% endif %}
+            {%- if not row.customer.is_active %} — account deactivated{% endif %}
+          </p>
+
+          {#
+            Flagged rather than quoted. Dietary notes are the customer's
+            own words and belong beside the order the chef is cooking,
+            which is where the queue renders them in full.
+          #}
+          {% if row.has_dietary_notes %}
+            <p class="admin-item__meta">Has dietary notes.</p>
+          {% endif %}
+
+          <div class="admin-item__actions">
+            <a
+              class="btn btn--ghost"
+              href="{{ url_for('chef.customer_ledger', user_id=row.customer.id) }}"
+            >Open ledger for {{ row.name }}</a>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+
+    {#
+      Plain links, both directions. A bound with nothing past it would
+      leave every customer after the first page with no route to their
+      ledger, which is the one thing this page exists to provide.
+      Rendered as a nav so the two controls read as a pair, and each says
+      which page it goes to rather than only "next".
+    #}
+    {% if directory.has_previous or directory.has_next %}
+      <nav class="form__actions" aria-label="Customer pages">
+        {% if directory.has_previous %}
+          <a
+            class="btn btn--ghost"
+            href="{{ url_for('chef.customers', page=directory.previous_page) }}"
+          >Back to page {{ directory.previous_page }}</a>
+        {% endif %}
+        {% if directory.has_next %}
+          <a
+            class="btn btn--ghost"
+            href="{{ url_for('chef.customers', page=directory.next_page) }}"
+          >On to page {{ directory.next_page }}</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% endif %}
+{% endblock %}

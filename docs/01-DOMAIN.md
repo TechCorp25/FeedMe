@@ -55,6 +55,9 @@ preparation        PreparationBlock          tab 4
 preference_flags   [str]                     see below
 spice_level        int                       0-5
 
+# --- review staleness ---
+ingredients_updated_at  datetime | None      when the ingredients last changed
+
 # --- dishes only ---
 component_refs     [str]                     optional provenance links
 serves             int
@@ -71,6 +74,38 @@ is_optional        bool
 
 Ingredients are ordered, chef-authored, and displayed in authored order. No automatic alphabetisation.
 
+### `ingredients_updated_at` and a stale review
+
+04-WORKFLOWS.md requires that editing the ingredients of an already-reviewed
+item flags its allergen block stale and prompts for re-review — without
+invalidating the item and without unpublishing it. This timestamp is how that
+is stored, and it is the **only** thing stored: staleness is derived, so the
+two can never disagree.
+
+```
+allergen_review_is_stale  ==  allergens.reviewed_at is not None
+                              and ingredients_updated_at is not None
+                              and ingredients_updated_at > allergens.reviewed_at
+```
+
+It is a field on the **item**, deliberately not a boolean inside
+`AllergenBlock`. Allergen fields are never modified by any code path except the
+chef allergen editor, and the thing that makes a declaration stale is an edit
+made by the *catalogue* editor — a flag in the block would have the catalogue
+form writing a compliance field on every save, which is the rule this document
+sets two sections down. The catalogue editor writes this timestamp and touches
+nothing in `allergens`.
+
+The stamp moves only when the ingredients actually changed. A save that
+corrected a price does not demand a re-review of a declaration nobody altered,
+and a prompt that fires on every save is a prompt the chef learns to dismiss.
+
+An **unreviewed** item is never "stale". It is unreviewed, which is a different
+state with different wording and a harder rule: it cannot be published at all.
+A stale item stays available and keeps rendering the declaration it was last
+reviewed with — the true statement of what was last checked — while the chef is
+told to look at it again.
+
 ## Allergens — Australia (FSANZ)
 
 Australian service. Allergen declaration follows FSANZ Standard 1.2.3 / the PEAL requirements. Controlled vocabulary only — **no free-text allergen entry**.
@@ -79,8 +114,8 @@ Australian service. Allergen declaration follows FSANZ Standard 1.2.3 / the PEAL
 AllergenBlock:
   contains          [AllergenCode]   declared present
   may_contain       [AllergenCode]   cross-contact risk
-  gluten_cereals    [str]            required if "cereals_gluten" in contains
-                                     wheat | rye | barley | oats | spelt
+  gluten_cereals    [str]            required if "gluten" in contains
+                                     wheat | rye | barley | oats
   tree_nut_species  [str]            required if "tree_nuts" in contains
                                      almond | brazil | cashew | hazelnut | macadamia
                                      | pecan | pine_nut | pistachio | walnut
@@ -98,67 +133,138 @@ record.
 `AllergenCode` enum:
 
 ```
-cereals_gluten, crustacea, mollusc, egg, fish, milk,
+wheat, gluten, crustacea, mollusc, egg, fish, milk,
 peanut, sesame, soy, tree_nuts, lupin, sulphites
 ```
+
+`wheat` and `gluten` are **two declarations, not one**, because the table to
+S9—3 gives them two rows: wheat is declarable irrespective of whether it
+contains gluten, and barley, oats and rye are declarable only if they do. A
+wheat-containing item that also contains gluten declares both. See
+*Verification record* below.
+
+### Retired vocabulary
+
+```
+cereals_gluten                      superseded by wheat + gluten
+gluten_cereals: spelt               superseded by wheat
+```
+
+**Parsed, never written.** Both values are frozen into
+`OrderLine.allergen_snapshot` on orders already placed, and a snapshot is never
+rewritten — a declaration a customer was given is what they were given. So they
+still parse, still render with the wording they were written with, and are
+never offered by the allergen editor or accepted from it. `WRITABLE_CODES` and
+`WRITABLE_GLUTEN_CEREALS` in `models/allergens.py` are the live vocabulary, and
+`AllergenBlock.uses_retired_vocabulary` is how a page says a block predates the
+split.
+
+The **browse exclusion filter** offers the live vocabulary only — three
+overlapping names for two things is not a choice a customer should be asked to
+make — but excluding either `wheat` or `gluten` also matches a stored
+`cereals_gluten`, at the query and in the cross-contact caution. That widens an
+exclusion beyond what it literally names, which is the safe direction for a
+browsing aid to fail; it never rewrites or re-renders a declaration.
 
 Rules, enforced in code:
 
 - Crustacea, mollusc and fish are **three separate declarations**. Never collapsed.
-- `cereals_gluten` present ⇒ `gluten_cereals` non-empty. Validation error otherwise.
+- `gluten` present ⇒ `gluten_cereals` non-empty. Validation error otherwise. The
+  retired `cereals_gluten` carries the same rule, so a stored block cannot lose
+  its cereals on re-read.
 - `tree_nuts` present ⇒ `tree_nut_species` non-empty. Validation error otherwise.
+- `gluten` present **and** `wheat` named among `gluten_cereals` ⇒ `wheat` present
+  in `contains`. Validation error otherwise. Item 3 makes wheat declarable in its
+  own right, so gluten that comes from wheat is two declarations; without this
+  rule a block renders "Gluten (wheat)" and never declares the wheat, which is
+  the under-declaration the split was made to prevent. Live declarations only —
+  a block carrying the retired `cereals_gluten` was written under a vocabulary
+  that could not express the distinction, and holding a stored record to a rule
+  that did not exist would make it unreadable.
+- `sulphites` in `contains` ⇔ `sulphites_declared`. A biconditional, so the flag
+  is a **checked mirror** of the `contains` entry rather than a second, quieter
+  route to a declaration. Validation error either way round, and it raises rather
+  than filling either half in: adding the `contains` entry would author a
+  declaration the chef did not make, and Schedule 9 item 1 makes sulphites
+  declarable only at ≥10 mg/kg, so an entry with the flag false asserts a
+  threshold nobody recorded. `sulphites_threshold_note` qualifies the chip; it
+  never stands in for it.
+
+  **On the read path this one rule is relaxed.** It is newer than the schema,
+  which permitted the pair to disagree, so documents already stored can carry
+  that state — an order's frozen snapshot among them. Refusing to parse one
+  would be the failure the retired-vocabulary rules exist to prevent: a
+  declaration a customer was given, unreadable because the rules moved. Worse,
+  `parse_many` isolates nothing, so one such snapshot would take out a whole
+  order history rather than one row. `parse_one` and `parse_many` therefore
+  validate with a `stored` context that skips this check and nothing else;
+  every write still goes through it, the block is rendered exactly as written
+  (`sulphites_threshold_note` still requires both halves, so nothing is
+  invented), and `AllergenBlock.sulphites_mirror_disagrees` is what tells the
+  chef to repair it. No other rule is relaxed: the rest have always been
+  enforced, so no stored document can violate one without having bypassed the
+  model entirely.
 - `reviewed_at` set ⇒ `reviewed_by` non-empty. Validation error otherwise. An unreviewed block carries `None` in both fields; there is no placeholder reviewer.
 - An allergen code is never in both `contains` and `may_contain`. Validation error otherwise — a declared allergen is not simultaneously a cross-contact risk.
 - An item with **no** allergen review (`reviewed_at is None`) cannot be published to customers. See *Publication* below.
 - The tab renders "No declared allergens" only when the block has been reviewed and `contains` is empty. An unreviewed item never renders that phrase.
 - Allergen fields are never modified by any code path except the chef allergen editor.
 
-> Verify the enum against the current text of FSANZ Standard 1.2.3 before go-live. The list above reflects the PEAL requirements but food standards are amended; treat this file as a starting point, not a legal source.
-
 ### Verification record
 
-**Checked 12 September 2026.** Source: the table to section **S9—3** of
-*Australia New Zealand Food Standards Code — Schedule 9 — Mandatory advisory
-statements and declarations*, **compilation No. 2, in force 25 February 2021,
-up to Amendment 197** (F2021C00195), read from FSANZ's *Food Standards Code —
-Compilation (April 2026)* PDF. That is the PEAL amendment; its transition
-period ended 25 February 2024 and its stock-in-trade period ended
+**Checked 12 September 2026. Acted on 14 September 2026.** Source: the table to
+section **S9—3** of *Australia New Zealand Food Standards Code — Schedule 9 —
+Mandatory advisory statements and declarations*, **compilation No. 2, in force
+25 February 2021, up to Amendment 197** (F2021C00195), read from FSANZ's *Food
+Standards Code — Compilation (April 2026)* PDF. That is the PEAL amendment; its
+transition period ended 25 February 2024 and its stock-in-trade period ended
 25 February 2026, so it is in full force with no remaining concession.
-
-**Code changed as a result: none yet.** Two discrepancies were found and are
-recorded here rather than fixed, because closing either changes `AllergenCode`
-and that enum's values are frozen into `OrderLine.allergen_snapshot`.
 
 **Column 4 of the table** — the required name for a declaration made outside a
 statement of ingredients, which is what this application renders — gives *two*
-rows where `AllergenCode` has one:
+rows where `AllergenCode` had one:
 
 | Schedule 9 item | Declarable when | Required name (column 4) |
 |---|---|---|
 | 3 — wheat, and its hybridised strains | always, *irrespective of whether it contains gluten* | `wheat`; and `gluten` as well, if gluten is present |
 | 2 — barley, oats, rye, and their hybridised strains | only *if they contain gluten* | `gluten` |
 
-So:
+Two discrepancies followed, and both are now closed in code:
 
-1. **`cereals_gluten` collapses two separate declarations.** It cannot express
-   wheat present without gluten — which item 3 requires be declared anyway —
-   and the name it renders is not one the table uses.
+1. **`cereals_gluten` collapsed two separate declarations.** It could not
+   express wheat present without gluten — which item 3 requires be declared
+   anyway — and the name it rendered is not one the table uses. `WHEAT` and
+   `GLUTEN` were added; `CEREALS_GLUTEN` was retired.
 2. **`spelt` is not a food in the table.** Spelt is of the genus *Triticum*, so
-   it is covered by item 3 and its required name is `wheat`.
-   `GlutenCereal.SPELT` therefore authorises a declaration the standard does
-   not have.
+   item 3 covers it and its required name is `wheat`. `GlutenCereal.SPELT` was
+   retired.
 
-Otherwise the vocabulary matches: the nine tree nut species are exactly the
-table's; crustacea, mollusc and fish are three separate rows, as this document
-already requires; and sulphites are declarable at 10 mg/kg or above. Two
-required names differ from the labels used here — `crustacean` rather than
-"Crustacea", and mollusc means a *marine* mollusc under S9—3(2)(c).
+**Two label changes, not enum changes.** `crustacea` renders as `Crustacean`,
+which is the required name; and because S9—3(2)(c) defines mollusc as a *marine*
+mollusc, that code renders as `Marine mollusc` rather than leaving a customer to
+decide for themselves what counts.
 
-**Proposed direction, not yet approved.** Add `WHEAT` and `GLUTEN`; keep
-`CEREALS_GLUTEN` and `SPELT` parseable but never writable and never offered by
-the allergen editor. Deleting them outright would break every historical order
-on read, and a snapshot is never rewritten — a declaration a customer was
-given is what they were given, whatever the vocabulary has since become.
+**Neither retired value was deleted**, and this is the part that is a rule
+rather than a convenience. Both are frozen into `OrderLine.allergen_snapshot` on
+orders already placed, and a snapshot is never rewritten. Deleting them would
+break every historical order on read — the customer's own order page, the chef's
+queue and the rolled-up summary alike. A declaration a customer was given is
+what they were given, whatever the vocabulary has since become. They are
+therefore parseable, renderable and unwritable, as *Retired vocabulary* above
+sets out.
+
+**No migration.** Catalogue items reviewed before the split keep declaring
+`cereals_gluten` until the chef re-reviews them; the chef editor says so, the
+browse filter still catches them, and nothing rewrites a declaration on their
+behalf — that would be a compliance record authored by a script.
+
+**Otherwise the vocabulary matches.** The nine tree nut species are exactly the
+table's; crustacean, mollusc and fish are three separate rows, as this document
+already requires; and sulphites are declarable at 10 mg/kg or above.
+
+> This file is a record of a check, not a legal source. Food standards are
+> amended. Re-verify against the current compilation before go-live and after
+> any amendment.
 
 ## Publication
 
@@ -251,9 +357,29 @@ OrderLine:
   item_type ("component" | "dish")
   item_id, name_snapshot, unit_price_cents, quantity, line_total_cents
   allergen_snapshot: AllergenBlock
+  storage_snapshot: StorageBlock | None
 ```
 
-**Snapshotting is mandatory.** Name, price and allergen block are copied onto the line at order time. A later catalogue edit must never retroactively change what a customer was told they were eating.
+**Snapshotting is mandatory.** Name, price, allergen block and storage block
+are copied onto the line at order time. A later catalogue edit must never
+retroactively change what a customer was told they were eating, nor how long
+they were told to keep it.
+
+`storage_snapshot` is the **whole `StorageBlock`**, not `shelf_life_days`
+alone. A date computed from a snapshotted shelf life, sitting beside a method
+and temperature the chef has since changed from "refrigerate" to "freeze", is
+worse than either alone; the allergen block set the precedent that the whole
+compliance block travels with the line.
+
+It is **nullable and never backfilled**. Lines written before the field
+existed have no snapshot, and an item with no storage block of its own has
+none either. Inventing one from today's catalogue would be exactly the
+retroactive edit the snapshot exists to prevent, so there is no migration.
+The customer's use-by (`prepared_at + shelf_life_days`, shortest across
+lines — 04-WORKFLOWS.md) is computed **only when every line carries a
+snapshot**: the shortest of the remaining lines would be a date that does not
+cover the whole order. Otherwise the order page points at the item's current
+guidance, which is what it did before the field existed.
 
 ## account_ledger
 
@@ -273,6 +399,6 @@ Declared in one bootstrap module, applied at startup, idempotent:
 users:          email (unique)
 components:     slug (unique), category, is_archived+is_available, preference_flags
 dishes:         slug (unique), meal_type_ids, is_archived+is_available, preference_flags
-orders:         user_id+created_at desc, status, reference (unique)
+orders:         user_id+created_at desc, status, requested_for, reference (unique)
 account_ledger: user_id+created_at
 ```

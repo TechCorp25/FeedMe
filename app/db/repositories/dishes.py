@@ -15,7 +15,7 @@ from pymongo.errors import DuplicateKeyError
 from app.db.client import get_db
 from app.models.base import utcnow
 from app.db.repositories._common import parse_many, parse_one, to_object_id
-from app.models.allergens import AllergenCode
+from app.models.allergens import AllergenCode, codes_matching
 from app.models.catalogue import Dish
 
 COLLECTION = "dishes"
@@ -38,8 +38,11 @@ def _visible_query(
         # excluded allergen stays in the result and is marked in the
         # listing instead: hiding a cross-contact risk would let the
         # filter read as a safety guarantee (04-WORKFLOWS.md).
+        # Widened to the retired codes each live code covers: an item
+        # reviewed before the wheat/gluten split still declares
+        # `cereals_gluten`, and a customer excluding gluten means it too.
         query["allergens.contains"] = {
-            "$nin": [code.value for code in exclude_allergens]
+            "$nin": [code.value for code in codes_matching(exclude_allergens)]
         }
     if meal_type_id is not None:
         # `meal_type_ids` is a list: a dish may sit under several meal
@@ -215,6 +218,26 @@ def chef_next_sort_order() -> int:
         {}, sort=[("sort_order", DESCENDING)], projection={"sort_order": 1}
     )
     return int(document.get("sort_order", 0)) + 1 if document else 0
+
+
+def chef_set_allergens(dish_id: str, allergens: dict) -> bool:
+    """Write the allergen block onto one dish. True when it landed.
+
+    Its own function, deliberately, rather than a call to
+    `chef_update_dish` with one more key. 01-DOMAIN.md: allergen
+    fields are never modified by any code path except the chef allergen
+    editor, and a rule about which call site may write a field is only
+    checkable if that write has a name of its own. This is the only
+    function in this module that touches `allergens`.
+    """
+    object_id = to_object_id(dish_id)
+    if object_id is None:
+        return False
+    result = get_db()[COLLECTION].update_one(
+        {"_id": object_id},
+        {"$set": {"allergens": allergens, "updated_at": utcnow()}},
+    )
+    return result.matched_count == 1
 
 
 def chef_set_sort_order(dish_id: str, sort_order: int) -> bool:

@@ -12,6 +12,8 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pydantic import BaseModel
 
+from app.models.allergens import STORED_CONTEXT_KEY
+
 M = TypeVar("M", bound=BaseModel)
 
 
@@ -27,9 +29,19 @@ def to_object_id(value: str) -> ObjectId | None:
         return None
 
 
+#: Marks a document as one that came out of MongoDB rather than one the
+#: application just built. A model may read a stored document more
+#: leniently than it accepts a new one, where a rule was added after the
+#: document was written — see `AllergenBlock._check_declaration`. It never
+#: relaxes a write: nothing outside this module passes it.
+_STORED = {STORED_CONTEXT_KEY: True}
+
+
 def parse_one(model: type[M], document: dict[str, Any] | None) -> M | None:
-    return model.model_validate(document) if document is not None else None
+    if document is None:
+        return None
+    return model.model_validate(document, context=_STORED)
 
 
 def parse_many(model: type[M], documents: Any) -> list[M]:
-    return [model.model_validate(document) for document in documents]
+    return [model.model_validate(document, context=_STORED) for document in documents]

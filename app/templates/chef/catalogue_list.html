@@ -114,6 +114,17 @@
             >Edit {{ item.name }}</a>
 
             {#
+              The separate step, reachable from the list as well as from
+              the form: this is where the chef sees what is blocked from
+              publication, and making it reachable only through the form
+              puts an unrelated page between them and the fix.
+            #}
+            <a
+              class="btn btn--ghost"
+              href="{{ url_for('chef.allergens', plural=plural_url, item_id=item.id) }}"
+            >{{ 'Review' if item.allergens.is_reviewed else 'Declare' }} allergens for {{ item.name }}</a>
+
+            {#
               Availability is offered only where it can succeed. An
               unreviewed item says why instead of showing a button whose
               only outcome is a refusal.

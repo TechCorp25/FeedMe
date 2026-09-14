@@ -92,24 +92,89 @@
 
   <h2 class="tab-panel__heading">Storage and use-by</h2>
   {#
-    Deliberately a pointer rather than a date. 04-WORKFLOWS.md computes a
-    use-by as `prepared_at + shelf_life_days` per line, shortest across
-    lines — but 01-DOMAIN.md's OrderLine snapshots the name, the price and
-    the allergen block, and not the storage block. Deriving a date from
-    the catalogue as it stands now would read a shelf life the chef may
-    have edited since, and a use-by that has been lengthened under a
-    customer is the one direction this must never fail in. The snapshot
-    the calculation needs is a schema change 01-DOMAIN.md owns; until it
-    is made, this page says where the current guidance is rather than
-    computing a date it cannot stand behind.
+    The date, computed from each line's own `storage_snapshot` — the
+    guidance as it stood when the order was placed, not as the catalogue
+    stands now. 04-WORKFLOWS.md: `prepared_at + shelf_life_days`, the
+    shortest across lines.
+
+    Three states, and each says which it is in words rather than by
+    presence alone. A use-by is only named when every line carries a
+    snapshot: an order with a line written before the snapshot existed —
+    or a line whose item had no storage guidance — gets the pointer it
+    got before, because the shortest of the remaining lines would be a
+    date that does not cover the whole order.
   #}
-  <p class="tab-panel__note">
-    Storage instructions and shelf life are on each item's own page, and
-    they are the kitchen's current guidance. A use-by counts from the day
-    your order is prepared{% if order.prepared_at %} — this one was
-    prepared {{ order.prepared_at | business_date }}{% endif %}.
-    If anything is unclear, ask the kitchen rather than guessing.
-  </p>
+  {% if use_by.use_by %}
+    <p class="tab-panel__lede">
+      <strong>Use by {{ use_by.use_by | business_date }}.</strong>
+      That is the shortest shelf life on this order —
+      {{ use_by.shelf_life_days }}
+      day{{ '' if use_by.shelf_life_days == 1 else 's' }} — counted from
+      {{ use_by.prepared_at | business_date }}, the day it was prepared.
+      Store every item as below.
+    </p>
+  {% elif use_by.is_complete %}
+    <p class="tab-panel__note">
+      The shortest shelf life on this order is {{ use_by.shelf_life_days }}
+      day{{ '' if use_by.shelf_life_days == 1 else 's' }}. Your use-by date
+      counts from the day the kitchen prepares the order, so it is shown
+      here once that happens.
+    </p>
+  {% else %}
+    <p class="tab-panel__note">
+      Storage instructions and shelf life are on each item's own page, and
+      they are the kitchen's current guidance. A use-by counts from the day
+      your order is prepared{% if order.prepared_at %} — this one was
+      prepared {{ order.prepared_at | business_date }}{% endif %}.
+      If anything is unclear, ask the kitchen rather than guessing.
+    </p>
+  {% endif %}
+
+  {% if use_by.lines %}
+    <ul class="order-storage">
+      {% for entry in use_by.lines %}
+        <li class="order-storage__item">
+          <h3 class="order-storage__name">{{ entry.name }}</h3>
+          <dl class="spec-list">
+            <dt>Storage</dt>
+            <dd>{{ entry.storage.method_label }}</dd>
+            <dt>Temperature</dt>
+            <dd>{{ entry.storage.temperature_c }}&#8202;&deg;C</dd>
+            <dt>Shelf life</dt>
+            <dd>
+              {{ entry.storage.shelf_life_days }}
+              day{{ '' if entry.storage.shelf_life_days == 1 else 's' }}
+              from preparation
+            </dd>
+            {% if entry.storage.shelf_life_note %}
+              <dt>Once opened</dt>
+              <dd>{{ entry.storage.shelf_life_note }}</dd>
+            {% endif %}
+            <dt>Freezable</dt>
+            <dd>
+              {% if entry.storage.freezable %}
+                Yes{% if entry.storage.freezer_life_days %},
+                  up to {{ entry.storage.freezer_life_days }}
+                  day{{ '' if entry.storage.freezer_life_days == 1 else 's' }}
+                  frozen{% endif %}
+              {% else %}
+                No
+              {% endif %}
+            </dd>
+          </dl>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if use_by.lines_without_guidance %}
+    <p class="notice notice--pending" role="status">
+      No storage guidance was recorded with
+      {{ use_by.lines_without_guidance | join(', ') }} on this order, so no
+      use-by date is calculated for it. Check the item's own page, or ask
+      the kitchen.
+    </p>
+  {% endif %}
 
   {#
     Both states are rendered: the control, and the sentence that replaces

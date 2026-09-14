@@ -127,3 +127,62 @@ def test_preference_flags_are_not_allergens():
     assert item.allergens.contains == []
     assert "chilli" not in [code.value for code in item.allergens.contains]
     assert item.preference_flags == ["chilli", "vegan"]
+
+
+# --- sulphites: the flag and the entry are one declaration ------------------
+#
+# 04-WORKFLOWS.md deferred this cross-validator to the allergen editor and
+# asked for a direction. It is a biconditional, and it raises rather than
+# filling either half in: adding the `contains` entry would author a
+# declaration the chef did not make, which 00-SYSTEM.md forbids outright,
+# and it is asymmetric besides — unticking the flag could not retract the
+# entry without the same inference in reverse.
+
+
+def test_the_flag_without_the_contains_entry_is_refused():
+    """The defect that was previously invisible to everyone.
+
+    The customer page deliberately renders nothing for a block in this
+    state, so nothing on any surface reported it.
+    """
+    with pytest.raises(ValidationError, match="sulphites"):
+        AllergenBlock(sulphites_declared=True, **REVIEWED)
+
+
+def test_the_contains_entry_without_the_flag_is_refused():
+    """Equally incoherent: Schedule 9 item 1 makes sulphites declarable
+    only at 10 mg/kg or above, so the entry asserts the threshold."""
+    with pytest.raises(ValidationError, match="sulphites"):
+        AllergenBlock(
+            contains=[AllergenCode.SULPHITES],
+            sulphites_declared=False,
+            **REVIEWED,
+        )
+
+
+def test_both_halves_together_are_accepted_and_carry_the_qualifier():
+    block = AllergenBlock(
+        contains=[AllergenCode.SULPHITES],
+        sulphites_declared=True,
+        **REVIEWED,
+    )
+
+    assert block.contains_labels == ["Sulphites"]
+    assert block.sulphites_threshold_note == (
+        "Sulphites are present at 10 mg/kg or above."
+    )
+
+
+def test_neither_half_is_the_ordinary_case():
+    block = AllergenBlock(contains=[AllergenCode.EGG], **REVIEWED)
+
+    assert block.sulphites_declared is False
+    assert block.sulphites_threshold_note is None
+
+
+def test_sulphites_as_a_cross_contact_risk_does_not_set_the_flag():
+    """`may_contain` is not a declaration, so it does not assert a level."""
+    block = AllergenBlock(may_contain=[AllergenCode.SULPHITES], **REVIEWED)
+
+    assert block.sulphites_declared is False
+    assert block.may_contain_labels == ["Sulphites"]

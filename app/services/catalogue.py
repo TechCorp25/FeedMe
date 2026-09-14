@@ -23,7 +23,12 @@ from dataclasses import dataclass, field
 from app.db.repositories import components as components_repo
 from app.db.repositories import dishes as dishes_repo
 from app.db.repositories import meal_types as meal_types_repo
-from app.models.allergens import ALLERGEN_LABELS, AllergenCode
+from app.models.allergens import (
+    ALLERGEN_LABELS,
+    WRITABLE_CODES,
+    AllergenCode,
+    codes_matching,
+)
 from app.models.catalogue import (
     COMPONENT_CATEGORY_LABELS,
     Component,
@@ -42,7 +47,14 @@ from app.models.catalogue import (
 #: as 'nothing here contains that'. The exclusion control is a browsing
 #: aid and is not allowed to make a statement about the catalogue's
 #: contents, so it offers the whole controlled vocabulary every time.
-EXCLUDABLE_ALLERGENS: tuple[AllergenCode, ...] = tuple(AllergenCode)
+#:
+#: The *live* vocabulary, though: a retired code is never offered as a
+#: choice, because 'cereals containing gluten' sitting beside 'wheat' and
+#: 'gluten' asks a customer to pick between three overlapping names for
+#: two things. An item still declaring a retired code is caught anyway —
+#: `codes_matching` widens each excluded code to the stored codes it
+#: covers, at the query and in the caution.
+EXCLUDABLE_ALLERGENS: tuple[AllergenCode, ...] = WRITABLE_CODES
 
 
 @dataclass(frozen=True)
@@ -161,10 +173,14 @@ class _SharedFacets:
         named: this answers their query and is not a second copy of the
         item's declaration, which stays on the item page.
         """
+        declared = set(item.allergens.may_contain)
         return [
             ALLERGEN_LABELS[code]
             for code in self.filters.exclude_allergens
-            if code in item.allergens.may_contain
+            # Widened to the retired codes each live code covers, so an
+            # item reviewed before the wheat/gluten split still raises the
+            # caution a customer excluding gluten asked for.
+            if declared & set(codes_matching([code]))
         ]
 
 

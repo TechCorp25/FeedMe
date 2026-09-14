@@ -87,6 +87,26 @@ def append_entry(user_id: str, entry: LedgerEntry) -> LedgerEntry:
 # --- chef scope: deliberately not user-scoped -------------------------------
 
 
+def chef_balances_by_user() -> dict[str, int]:
+    """Every customer's balance, summed by the database in one read.
+
+    The customer index renders a balance beside each name, and asking
+    `balance_cents` once per customer is one aggregation per row — the
+    shape that makes a directory unusable at exactly the point the
+    kitchen has enough customers to need one.
+
+    Only accounts with at least one entry appear; a customer who has
+    never been charged has no rows to sum, and the caller reads that
+    absence as zero rather than storing a balance (01-DOMAIN.md).
+    """
+    pipeline = [{"$group": {"_id": "$user_id", "total": {"$sum": "$amount_cents"}}}]
+    return {
+        str(row["_id"]): int(row["total"])
+        for row in get_db()[COLLECTION].aggregate(pipeline)
+        if row["_id"] is not None
+    }
+
+
 def chef_list_entries(user_id: str, limit: int = 500) -> list[LedgerEntry]:
     """Chef view of one customer's ledger, oldest first.
 

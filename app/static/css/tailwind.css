@@ -509,6 +509,13 @@
     @apply mt-3 max-w-prose font-serif text-sm text-ink-muted;
   }
 
+  /* The one sentence a panel leads with when it has a definite answer —
+     the order's use-by date. Full-strength ink rather than the muted
+     note beside it, because it is the thing the customer came to read. */
+  .tab-panel__lede {
+    @apply mt-3 max-w-prose font-serif text-base text-ink;
+  }
+
   .notice {
     @apply mt-3 max-w-prose border-2 border-ink bg-surface p-4 font-serif
            text-sm text-ink;
@@ -959,6 +966,21 @@
      is never mistaken for a price. */
   .order-line__allergens {
     @apply flex flex-col gap-2 border-l-2 border-stamp bg-sunken p-3 pl-4;
+  }
+
+  /* One storage block per line, as it was snapshotted onto the order.
+     Listed rather than merged: the use-by above is the shortest across
+     the lines, and each item still has its own method and temperature. */
+  .order-storage {
+    @apply mt-4 flex list-none flex-col gap-4 p-0;
+  }
+
+  .order-storage__item {
+    @apply border-l-2 border-ink bg-sunken p-3 pl-4;
+  }
+
+  .order-storage__name {
+    @apply font-display text-sm uppercase tracking-widest text-ink;
   }
 
   /* --- the customer's account ----------------------------------------- */

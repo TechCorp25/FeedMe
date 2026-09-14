@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{#
+  Checked state after a refusal comes from what was submitted, not from
+  what is stored: the chef has just made a set of decisions and a
+  re-render that quietly reverted them would be worse than losing them
+  visibly.
+#}
+{% macro ticked(field, value, stored) %}
+  {%- if submitted is defined -%}
+    {{ 'checked' if value in submitted.getlist(field) }}
+  {%- else -%}
+    {{ 'checked' if stored }}
+  {%- endif -%}
+{% endmacro %}
+
+{% block title %}Allergens — {{ item.name }} — FeedMe{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.' ~ plural_url) }}
+
+  <p class="page__kicker">
+    Allergen declaration —
+    <a href="{{ url_for('chef.edit_item', plural=plural_url, item_id=item.id) }}">
+      back to the {{ kind }} editor
+    </a>
+  </p>
+  <h1 class="page__title">{{ item.name }}</h1>
+
+  {#
+    Said before anything is ticked. This is the one code path that writes
+    an allergen block (01-DOMAIN.md), and saving it is the review — there
+    is no save here that does not stamp who reviewed it and when.
+  #}
+  <p class="notice">
+    This is the only place allergens are edited. Saving records a review
+    against your account and the moment you made it, and an item cannot be
+    made available to customers until one exists. Nothing is filled in for
+    you and nothing is carried over from a linked component.
+  </p>
+
+  {# --- what state the declaration is in, in words --- #}
+  {% if not block.is_reviewed %}
+    <p class="notice notice--pending" role="status">
+      This {{ kind }} has never had an allergen review. It cannot be made
+      available to customers until it does.
+    </p>
+  {% else %}
+    <p class="tab-panel__note">
+      Last reviewed {{ block.reviewed_at | business_date }}
+      by {{ block.reviewed_by }}.
+    </p>
+    {% if item.allergen_review_is_stale %}
+      <p class="notice notice--pending" role="status">
+        The ingredients changed after that review. The declaration still
+        stands and this {{ kind }} is still published — reviewing it again
+        is what clears this prompt.
+      </p>
+    {% endif %}
+  {% endif %}
+
+  {% if block.uses_retired_vocabulary %}
+    {#
+      Reported, never translated. Reading "cereals containing gluten" as
+      wheat, or as gluten, or as both would be this page inferring a
+      declaration, which is precisely what it is not allowed to do.
+    #}
+    <p class="notice notice--pending" role="status">
+      This declaration was made with wording the standard no longer uses
+      (“cereals containing gluten”, or spelt). It still reads exactly as it
+      was written and nothing has been changed. Saving a review replaces it
+      with the current wording — declare wheat, gluten, or both, as the
+      ingredients require.
+    </p>
+  {% endif %}
+
+  {% if block.sulphites_mirror_disagrees %}
+    {#
+      Only reachable on a block stored before the rule existed: the form
+      offers one control and every write is refused unless both halves
+      agree. Reported rather than repaired — filling in either half would
+      be this page authoring a declaration.
+    #}
+    <p class="notice notice--pending" role="status">
+      This declaration's sulphites threshold flag does not match its
+      allergen list — one was recorded without the other, which the editor
+      no longer allows. It is shown exactly as it was recorded and nothing
+      has been changed. Saving a review puts the two back together.
+    </p>
+  {% endif %}
+
+  {% if rollup_warnings %}
+    {#
+      Advisory. 01-DOMAIN.md: rollup "never mutates the dish document. The
+      chef resolves it manually." No control here applies one.
+    #}
+    <section class="notice notice--pending" aria-label="Linked component warnings">
+      <h2 class="tab-panel__subheading">Linked components declare more than this dish</h2>
+      <ul>
+        {% for warning in rollup_warnings %}
+          <li>{{ warning.message }}</li>
+        {% endfor %}
+      </ul>
+      <p>
+        This is a prompt, not a change. Nothing is added to this dish's
+        declaration unless you tick it below.
+      </p>
+    </section>
+  {% endif %}
+
+  {# --- the ingredients this is a declaration about --- #}
+  <h2 class="tab-panel__heading">Ingredients as they stand</h2>
+  {% if item.ingredients %}
+    <ul class="ingredients">
+      {% for ingredient in item.ingredients %}
+        <li class="ingredients__item">
+          <span class="ingredients__name">{{ ingredient.name }}</span>
+          {% if ingredient.quantity %}
+            <span class="ingredients__quantity">{{ ingredient.quantity }}</span>
+          {% endif %}
+          {% if ingredient.is_optional %}
+            <span class="ingredients__optional">optional</span>
+          {% endif %}
+          {% if ingredient.note %}
+            <span class="ingredients__note">{{ ingredient.note }}</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="notice notice--pending" role="status">
+      No ingredients are recorded for this {{ kind }}. A declaration can
+      still be made, but there is nothing here to check it against.
+    </p>
+  {% endif %}
+  <p class="form__hint">
+    Ingredients are edited on the
+    <a href="{{ url_for('chef.edit_item', plural=plural_url, item_id=item.id) }}">{{ kind }}
+    editor</a>, never here.
+  </p>
+
+  <form
+    class="form"
+    method="post"
+    action="{{ url_for('chef.save_allergens', plural=plural_url, item_id=item.id) }}"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {#
+      Which ingredient list this review is a review *of*. A save is a
+      statement about the ingredients above; if they change in another
+      tab while this page sits open, the save is refused rather than
+      stamped as a current review of a list nobody checked.
+    #}
+    <input type="hidden" name="ingredients_stamp" value="{{ ingredients_stamp }}">
+
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Contains</legend>
+      <p class="form__hint">
+        What this {{ kind }} declares as present. Leaving every box clear is
+        a declaration too — once reviewed, the item reads “No declared
+        allergens”.
+      </p>
+      <ul class="filters__options">
+        {% for choice in contains_choices %}
+          <li class="form__choice">
+            <input
+              type="checkbox" id="contains-{{ choice.value }}"
+              name="contains" value="{{ choice.value }}"
+              {{ ticked('contains', choice.value, choice.checked) }}
+            >
+            <label for="contains-{{ choice.value }}">{{ choice.label }}</label>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="form__hint">
+        {#
+          One control for sulphites, deliberately. The threshold flag and
+          the declaration are a biconditional in the model, so the form
+          never lets you set one without the other.
+        #}
+        {{ sulphites_label }} are declarable only at 10 mg/kg or above, so
+        ticking that box declares both the allergen and the threshold.
+      </p>
+    </fieldset>
+
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Which cereals the gluten is from</legend>
+      <p class="form__hint">
+        Required when gluten is declared above, and named inside the chip a
+        customer reads. Wheat is declarable on its own whether or not it
+        contains gluten, so naming wheat here means ticking “Wheat” above
+        as well as “Gluten” — they are two declarations, and saving without
+        both is refused.
+      </p>
+      <ul class="filters__options">
+        {% for choice in gluten_cereal_choices %}
+          <li class="form__choice">
+            <input
+              type="checkbox" id="cereal-{{ choice.value }}"
+              name="gluten_cereal" value="{{ choice.value }}"
+              {{ ticked('gluten_cereal', choice.value, choice.checked) }}
+            >
+            <label for="cereal-{{ choice.value }}">{{ choice.label }}</label>
+          </li>
+        {% endfor %}
+      </ul>
+    </fieldset>
+
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Which tree nuts</legend>
+      <p class="form__hint">
+        Required when tree nuts are declared above, and named inside the
+        chip a customer reads.
+      </p>
+      <ul class="filters__options">
+        {% for choice in tree_nut_choices %}
+          <li class="form__choice">
+            <input
+              type="checkbox" id="nut-{{ choice.value }}"
+              name="tree_nut_species" value="{{ choice.value }}"
+              {{ ticked('tree_nut_species', choice.value, choice.checked) }}
+            >
+            <label for="nut-{{ choice.value }}">{{ choice.label }}</label>
+          </li>
+        {% endfor %}
+      </ul>
+    </fieldset>
+
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">May contain — cross-contact risk</legend>
+      <p class="form__hint">
+        A risk from the kitchen, not an ingredient. An allergen cannot be in
+        both lists: a declared allergen is not also a possible one.
+      </p>
+      <ul class="filters__options">
+        {% for choice in may_contain_choices %}
+          <li class="form__choice">
+            <input
+              type="checkbox" id="may-{{ choice.value }}"
+              name="may_contain" value="{{ choice.value }}"
+              {{ ticked('may_contain', choice.value, choice.checked) }}
+            >
+            <label for="may-{{ choice.value }}">{{ choice.label }}</label>
+          </li>
+        {% endfor %}
+      </ul>
+    </fieldset>
+
+    <div class="form__field">
+      <label class="form__label" for="chef_note">Note from the kitchen</label>
+      <textarea
+        class="form__input" id="chef_note" name="chef_note"
+        rows="3" maxlength="{{ max_chef_note }}"
+      >{% if submitted is defined %}{{ submitted.get('chef_note', '') }}{% else %}{{ block.chef_note or '' }}{% endif %}</textarea>
+      <p class="form__hint">
+        Optional, and additive only. It qualifies the declaration above and
+        never stands in for one.
+      </p>
+    </div>
+
+    {#
+      The confirmation 04-WORKFLOWS.md requires. Not pre-ticked and not
+      remembered across a refusal: it is the act that makes this a review,
+      and a box that arrives already ticked confirms nothing.
+    #}
+    <fieldset class="form__fieldset">
+      <legend class="filters__heading">Confirm the declaration</legend>
+      <div class="form__choice">
+        <input type="checkbox" id="confirm" name="confirm" value="1" required>
+        <label for="confirm">
+          I have checked this declaration against the ingredients above and
+          confirm it is accurate.
+        </label>
+      </div>
+      <p class="form__hint">
+        Saving records this review against {{ current_user.email }} and the
+        moment you save it.
+      </p>
+    </fieldset>
+
+    <div class="form__actions">
+      <button class="btn btn--primary" type="submit">
+        Save the declaration for {{ item.name }}
+      </button>
+      <a
+        class="btn btn--ghost"
+        href="{{ url_for('chef.edit_item', plural=plural_url, item_id=item.id) }}"
+      >Back to the {{ kind }} editor</a>
+    </div>
+  </form>
+{% endblock %}

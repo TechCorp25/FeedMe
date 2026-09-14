@@ -202,11 +202,12 @@ def parse_checkout_form(form, *, user: User, today: date) -> CheckoutRequest:
 def snapshot_lines(view: CartView) -> list[OrderLine]:
     """Freeze the cart against the catalogue as it stands right now.
 
-    The name, the unit price and the entire allergen block are copied
-    onto the line. A later catalogue edit must never change what a
-    customer was told they were eating (01-DOMAIN.md), so nothing on an
-    order line is a reference back into the catalogue except `item_id`,
-    which identifies the item and is never read for display.
+    The name, the unit price, the entire allergen block and the entire
+    storage block are copied onto the line. A later catalogue edit must
+    never change what a customer was told they were eating — or how long
+    they were told to keep it (01-DOMAIN.md) — so nothing on an order
+    line is a reference back into the catalogue except `item_id`, which
+    identifies the item and is never read for display.
     """
     lines: list[OrderLine] = []
     for entry in view.entries:
@@ -227,6 +228,14 @@ def snapshot_lines(view: CartView) -> list[OrderLine]:
                     entry.item.price_cents, entry.quantity
                 ),
                 allergen_snapshot=entry.item.allergens.model_copy(deep=True),
+                # `storage` is optional on an item, so this is optional
+                # on the line. An absent block is not a zero-day shelf
+                # life; it is no guidance, and the order page says so.
+                storage_snapshot=(
+                    entry.item.storage.model_copy(deep=True)
+                    if entry.item.storage is not None
+                    else None
+                ),
             )
         )
     return lines

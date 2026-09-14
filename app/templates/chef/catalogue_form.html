@@ -51,6 +51,26 @@
     {% endif %}
   </p>
 
+  {#
+    The way to the separate step. Only on a saved item: there is nothing
+    to declare against until the item exists, and the editor's own URL
+    needs its id.
+  #}
+  {% if not is_new %}
+    <p class="form__actions">
+      <a
+        class="btn btn--primary"
+        href="{{ url_for('chef.allergens', plural=plural_url, item_id=item.id) }}"
+      >
+        {% if item.allergens.is_reviewed %}
+          Review the allergen declaration for {{ item.name }}
+        {% else %}
+          Make the allergen declaration for {{ item.name }}
+        {% endif %}
+      </a>
+    </p>
+  {% endif %}
+
   <form
     class="form"
     method="post"

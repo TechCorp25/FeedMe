@@ -184,18 +184,22 @@ All routes scoped by `user_id` at the repository. Requesting another customer's 
   `last_order_reference`, both survived it and reached whoever signed in
   next on that browser. Both are cleared at sign-out now.
 
-*Deferred, and owned by 01-DOMAIN.md:* **the use-by date.** This document
-computes it as `prepared_at + shelf_life_days` per line, shortest across
-lines. `OrderLine` snapshots the name, the unit price and the allergen
-block, and not the `StorageBlock` — so the shelf life is only readable from
-the catalogue as it stands now, which the chef may have edited since the
-order was prepared. A use-by that has been *lengthened* under a customer is
-the one direction this must never fail in, so the order page points at the
-item's current guidance rather than computing a date it cannot stand
-behind. Closing it means adding a storage snapshot to `OrderLine`, which is
-a change to the order document 01-DOMAIN.md owns. Decide the direction
-there: either the whole `StorageBlock` is snapshotted like the allergen
-block, or `shelf_life_days` alone is.
+*Settled, in 01-DOMAIN.md:* **the use-by date.** `OrderLine` now snapshots
+`storage_snapshot: StorageBlock | None` alongside the allergen block, so the
+shelf life the date is counted from is the one the customer was sold, not the
+one the chef may have edited since. A use-by *lengthened* underneath a customer
+is the one direction this must never fail in.
+
+The whole block travels, not `shelf_life_days` alone: a date beside a method
+and a temperature the chef has since changed is worse than either alone.
+
+The date is computed only when **every** line carries a snapshot. Lines written
+before the field existed have none, and an item with no storage block has none
+either; the shortest of the remaining lines would be a date that does not cover
+the whole order. In that case `/account/orders/<reference>` keeps the pointer to
+the item's current guidance that it carried before, and names the lines it has
+no guidance for. Nothing is backfilled — a snapshot invented from today's
+catalogue is the retroactive edit the snapshot exists to prevent.
 
 ## Chef-admin flows
 
@@ -210,25 +214,82 @@ Aggregates all orders for a date into a component-level pick list — quantities
 **Catalogue editors** — `/chef/components`, `/chef/dishes`
 Full CRUD. Create, edit, archive, reorder, toggle availability. Dish editor includes optional component linking.
 
-**Allergen editor** — a deliberately separate step, not a section of the main item form.
+**Allergen editor** — `/chef/components/<id>/allergens`, `/chef/dishes/<id>/allergens`
+A deliberately separate step, not a section of the main item form.
 
-- Opened explicitly from the item editor.
-- Requires the chef to confirm the declaration before saving; sets `reviewed_at` and `reviewed_by`.
-- Displays the rollup warning when a linked component declares an allergen the dish omits. The warning is advisory. The chef resolves it; the system never auto-applies it.
+- Opened explicitly from the item editor and from the catalogue list — the
+  list is where the chef sees what is blocked from publication, and routing
+  the fix through the form puts an unrelated page in between.
+- Requires the chef to confirm the declaration before saving; sets `reviewed_at`
+  and `reviewed_by`. There is no save here that is not a review. `reviewed_by`
+  is the acting chef's email address: a compliance record identifies a person,
+  and a display name is editable and need not be unique.
+- Displays the rollup warning when a linked component declares an allergen the
+  dish omits. The warning is advisory. The chef resolves it; the system never
+  auto-applies it, and no control on the page offers to.
 - An item cannot be published while `reviewed_at is None`.
-- Editing ingredients on an already-reviewed item flags the allergen block as stale and surfaces a re-review prompt. It does not silently invalidate the item, and it does not unpublish it — it prompts.
+- Editing ingredients on an already-reviewed item flags the allergen block as
+  stale and surfaces a re-review prompt. It does not silently invalidate the
+  item, and it does not unpublish it — it prompts. Re-reviewing is what clears
+  it, because staleness is derived from the two timestamps rather than stored.
+- The page renders the item's **ingredients as they stand**, read-only, because
+  that is what the declaration is a declaration about. They are edited on the
+  item editor and never here.
+- It writes `allergens` and nothing else. `catalogue_admin` writes everything
+  else and never `allergens`; both go through a repository function named for
+  the field it touches, so the rule is checkable at the call site.
+- Only the live vocabulary is offered, **and only it is accepted**. A retired
+  code posted by a stale tab is refused, never dropped: saving a declaration
+  the chef did not see and reporting success is the one failure a compliance
+  form must not have. A stored block that predates the wheat/gluten split is
+  reported and never translated — nothing is pre-ticked on its behalf.
+- **A review is pinned to the ingredients the page showed.** The form carries
+  the item's `ingredients_updated_at`, and a save is refused if it has moved
+  since — the same shape as the checkout's digest of what it showed. Without
+  it, a page left open while another tab edits the ingredients would save a
+  `reviewed_at` later than `ingredients_updated_at`, clearing the staleness
+  prompt on a declaration nobody has checked against what the item now
+  contains. That reads as a current review, which is worse than none. The
+  refusal re-renders with the new ingredients to check against.
+- Nothing from a retired block is pre-ticked, **its cereals included**. The
+  cereals belong to the retired `cereals_gluten`, which is itself left clear;
+  carrying them over would let the chef tick "Gluten" and save half a
+  translation nobody made.
+- A stored block whose sulphites threshold flag and `contains` entry disagree
+  is flagged here and repaired by re-reviewing. It cannot be created — the form
+  offers one control and every write is refused — so it can only predate the
+  rule.
+- Preference flags and spice level never appear on this surface.
 
-*Deferred, owned by this editor:* `sulphites_declared` and `contains` are not
-cross-validated. A block can set the flag without listing `sulphites` in
-`contains`, and the customer page deliberately renders nothing in that case —
-`AllergenBlock.sulphites_threshold_note` qualifies a declaration and never
-invents one. That leaves the defect visible to nobody. The rule belongs here,
-in the one code path allowed to write the block, and as a model validator
-alongside the `cereals_gluten` and `tree_nuts` rules in 01-DOMAIN.md. It was
-not added with the read-only catalogue slice because a cross-validator changes
-the model contract, and a browse-and-detail change has no business altering
-compliance semantics. Decide the direction when building this editor: either
-the flag requires the `contains` entry, or setting the flag adds it.
+*Decided by this editor:* `sulphites_declared` and `contains` are **one
+declaration**. The rule is a biconditional — `sulphites` in `contains` ⇔
+`sulphites_declared` — enforced as a model validator in 01-DOMAIN.md alongside
+the `gluten` and `tree_nuts` rules, and again here, where the editor exposes
+**one control** so the error is unreachable through the UI.
+
+It raises and never fills in. Auto-adding the `contains` entry would author a
+declaration the chef did not make, which 00-SYSTEM.md forbids — "never inferred,
+never auto-generated, never silently defaulted" — and it is asymmetric besides,
+since unticking the flag could not retract the entry without the same inference
+in reverse. Schedule 9 item 1 makes sulphites declarable *only* at ≥10 mg/kg, so
+a `contains` entry with the flag false is equally incoherent.
+
+What this costs is that the flag is no longer independently meaningful: it is a
+checked mirror of `contains`. That is the point. Before the rule, a block could
+set the flag without the entry, the customer page deliberately rendered nothing
+for that state, and the defect was therefore visible to nobody.
+
+**Customers** — `/chef/customers`
+Every customer account, ordered by name and **paged**, each with its balance and
+the way in to its ledger. Paged rather than bounded: a bound with nothing past
+it would leave every customer after the first page with no route to their ledger
+at all, which is the one thing this page exists to provide. One extra row per
+read tells the page whether there is a next one, which is cheaper than counting
+the collection and exact. The order queue links to a customer who has an order
+outstanding, which is not the same set — a customer who settled last month
+still has a ledger to read and a credit that may need writing. Balances are one
+aggregation for the whole page, not one per row. Dietary notes are *flagged*
+here and quoted in full only beside the order the chef is cooking.
 
 **Ledger** — `/chef/customers/<user_id>/ledger`
 View entries, add manual `adjustment` or `credit` entries with a description. Entries are append-only; corrections are new offsetting entries, never edits or deletes.

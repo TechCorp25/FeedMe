@@ -128,6 +128,7 @@ def order_detail(reference: str) -> str:
         "account/order_detail.html",
         order=order,
         can_cancel=account_service.can_customer_cancel(order),
+        use_by=account_service.use_by_view(order),
     )
 
 

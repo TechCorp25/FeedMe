@@ -1,8 +1,9 @@
 """Order models.
 
 Name, unit price and the full allergen block are snapshotted onto every
-line at checkout. A later catalogue edit must never retroactively change
-what a customer was told they were eating (01-DOMAIN.md).
+line at checkout, and so is the storage block. A later catalogue edit
+must never retroactively change what a customer was told they were
+eating, nor how long they were told to keep it (01-DOMAIN.md).
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pydantic import Field, model_validator
 
 from app.models.allergens import AllergenBlock
 from app.models.base import EmbeddedModel, MongoModel, TimestampedModel, utcnow
+from app.models.catalogue import StorageBlock
 
 
 class OrderStatus(str, Enum):
@@ -52,6 +54,26 @@ class OrderLine(EmbeddedModel):
     quantity: int = Field(ge=1)
     line_total_cents: int = Field(ge=0)
     allergen_snapshot: AllergenBlock
+
+    #: The storage guidance as it stood when the order was placed. The
+    #: customer's use-by is `prepared_at + shelf_life_days`, and a shelf
+    #: life read live from the catalogue is one the chef may have edited
+    #: since — a use-by *lengthened* underneath a customer is the one
+    #: direction this must never fail in.
+    #:
+    #: The whole block, not `shelf_life_days` alone. A date computed from
+    #: a snapshotted shelf life, sitting beside a method and temperature
+    #: the chef has since changed from "refrigerate" to "freeze", is
+    #: worse than either alone. The allergen block set the precedent: the
+    #: whole compliance block travels with the line.
+    #:
+    #: Nullable, and never backfilled. Lines written before this field
+    #: existed have no snapshot, and inventing one from today's catalogue
+    #: would be exactly the retroactive edit the snapshot exists to
+    #: prevent. An item with no storage block of its own also lands here.
+    #: Either way the order page says where the current guidance is
+    #: rather than computing a date it cannot stand behind.
+    storage_snapshot: StorageBlock | None = None
 
     @model_validator(mode="after")
     def _line_total_is_consistent(self) -> "OrderLine":
