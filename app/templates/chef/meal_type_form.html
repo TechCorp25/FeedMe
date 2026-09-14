@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{% block title %}{{ meal_type.name }} — Meal types — FeedMe{% endblock %}
+
+{% block page_modifier %}page--reading{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.meal_types') }}
+
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ url_for('chef.meal_types') }}">Meal types</a>
+  </nav>
+
+  <p class="page__kicker">Chef</p>
+  <h1 class="page__title">Rename {{ meal_type.name }}</h1>
+
+  <form
+    class="form"
+    method="post"
+    action="{{ url_for('chef.save_meal_type', meal_type_id=meal_type.id) }}"
+  >
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="form__field">
+      <label class="form__label" for="meal-type-name">Name</label>
+      <input
+        class="form__input"
+        id="meal-type-name"
+        name="name"
+        type="text"
+        maxlength="120"
+        required
+        value="{{ submitted.get('name', meal_type.name) if submitted else meal_type.name }}"
+      >
+      <p class="form__hint">What the customer reads on the menu and the dish editor.</p>
+    </div>
+
+    <div class="form__field">
+      <label class="form__label" for="meal-type-slug">Slug</label>
+      <input
+        class="form__input"
+        id="meal-type-slug"
+        name="slug"
+        type="text"
+        maxlength="120"
+        value="{{ submitted.get('slug', meal_type.slug) if submitted else meal_type.slug }}"
+      >
+      {#
+        The one thing on this page that can break something already
+        working, said beside the field that does it. The slug is never
+        re-derived from the name — correcting a label leaves the address
+        alone — so changing it here is a deliberate act.
+      #}
+      <p class="form__hint">
+        This is the address customers have:
+        <code>/menu/{{ meal_type.slug }}</code>. Changing it breaks every
+        saved link to this menu. Correcting the name above does not change
+        it.
+      </p>
+    </div>
+
+    <div class="form__actions">
+      <button class="btn" type="submit">Save {{ meal_type.name }}</button>
+      <a class="btn btn--ghost" href="{{ url_for('chef.meal_types') }}">
+        Back to meal types
+      </a>
+    </div>
+  </form>
+{% endblock %}

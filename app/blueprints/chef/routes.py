@@ -23,6 +23,7 @@ from app.services import (
     catalogue_admin,
     chef_ledger,
     chef_orders,
+    meal_type_admin,
     prep_sheet,
 )
 from app.services.dates import business_today
@@ -317,6 +318,114 @@ def move_item(plural: str, item_id: str):
         flash(str(error), "error")
 
     return _list_redirect(kind)
+
+
+# --- meal types -------------------------------------------------------------
+#
+# `/menu/<meal_type_slug>` is one of the three ordering entry points
+# (04-WORKFLOWS.md) and the dish editor offers meal types as checkboxes.
+# Neither worked before this page existed, because nothing wrote to the
+# collection: `meal_types` had two read functions and no way in.
+#
+# Same shape as the catalogue editors above — a list that is also the
+# create form, a rename, a reorder — with one difference. There is no
+# archive here. A meal type is deleted outright, and deletion is refused
+# while a dish still references it, so `/menu` can never resolve to a
+# label a dish points at and nothing renders under. `meal_type_admin`
+# carries the reasoning.
+
+
+def _meal_type_or_404(meal_type_id: str):
+    meal_type = meal_type_admin.get_meal_type(meal_type_id)
+    if meal_type is None:
+        abort(404)
+    return meal_type
+
+
+@bp.get("/meal-types")
+@chef_required
+def meal_types() -> str:
+    """Every meal type, and the form that creates one."""
+    return render_template(
+        "chef/meal_types.html", listing=meal_type_admin.listing()
+    )
+
+
+@bp.get("/meal-types/<meal_type_id>/edit")
+@chef_required
+def edit_meal_type(meal_type_id: str) -> str:
+    """Rename one meal type, on its own page.
+
+    Its own page rather than an inline field on the list: a rename is the
+    one action here that can break a saved `/menu` link, and the page is
+    where that is explained beside the field that does it.
+    """
+    return render_template(
+        "chef/meal_type_form.html", meal_type=_meal_type_or_404(meal_type_id)
+    )
+
+
+@bp.post("/meal-types/save")
+@bp.post("/meal-types/<meal_type_id>/save")
+@chef_required
+def save_meal_type(meal_type_id: str | None = None):
+    """Create or rename. A refusal re-renders, so nothing typed is lost."""
+    existing = _meal_type_or_404(meal_type_id) if meal_type_id else None
+
+    try:
+        meal_type = meal_type_admin.save(meal_type_id, request.form)
+    except meal_type_admin.MealTypeFormError as error:
+        flash(str(error), "error")
+        if existing is None:
+            return (
+                render_template(
+                    "chef/meal_types.html",
+                    listing=meal_type_admin.listing(),
+                    submitted=request.form,
+                ),
+                400,
+            )
+        return (
+            render_template(
+                "chef/meal_type_form.html",
+                meal_type=existing,
+                submitted=request.form,
+            ),
+            400,
+        )
+
+    flash(f"{meal_type.name} is saved.", "success")
+    return redirect(url_for("chef.meal_types"))
+
+
+@bp.post("/meal-types/<meal_type_id>/delete")
+@chef_required
+def delete_meal_type(meal_type_id: str):
+    """Remove one meal type, unless a dish still points at it."""
+    meal_type = _meal_type_or_404(meal_type_id)
+
+    try:
+        meal_type_admin.delete(meal_type)
+    except meal_type_admin.MealTypeFormError as error:
+        flash(str(error), "error")
+        return redirect(url_for("chef.meal_types"))
+
+    flash(f"{meal_type.name} is deleted.", "success")
+    return redirect(url_for("chef.meal_types"))
+
+
+@bp.post("/meal-types/<meal_type_id>/move")
+@chef_required
+def move_meal_type(meal_type_id: str):
+    """Reorder by swapping with a neighbour. The order is the menu's."""
+    meal_type = _meal_type_or_404(meal_type_id)
+
+    try:
+        meal_type_admin.move(meal_type, request.form.get("direction", ""))
+    except meal_type_admin.MealTypeFormError as error:
+        flash(str(error), "error")
+
+    return redirect(url_for("chef.meal_types"))
 
 
 # --- the allergen editor ----------------------------------------------------

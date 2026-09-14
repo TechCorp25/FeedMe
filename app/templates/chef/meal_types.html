@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% import "macros/chef.html" as chef_macros %}
+
+{#
+  One action, one form POST — the same shape the catalogue list uses, and
+  defined here for the same reason: nothing outside this page uses it.
+#}
+{% macro meal_type_action(action, label, values={}, danger=false) %}
+  <form class="admin-action" method="post" action="{{ action }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for name, value in values.items() %}
+      <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    <button
+      class="btn {{ 'btn--danger' if danger else 'btn--ghost' }}"
+      type="submit"
+    >{{ label }}</button>
+  </form>
+{% endmacro %}
+
+{% block title %}Meal types — FeedMe{% endblock %}
+
+{% block content %}
+  {{ chef_macros.chef_nav('chef.meal_types') }}
+
+  <p class="page__kicker">Chef</p>
+  <h1 class="page__title">Meal types</h1>
+  <p class="page__lede">
+    Breakfast, lunch, dinner, snack — the labels a customer browses by at
+    <code>/menu</code>, and the boxes the dish editor offers. The order
+    below is the order they appear in. A dish may sit under several.
+  </p>
+
+  <section class="form" aria-labelledby="new-meal-type">
+    <h2 class="tab-panel__heading" id="new-meal-type">Add a meal type</h2>
+    <form method="post" action="{{ url_for('chef.save_meal_type') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="row-group">
+        <div class="form__field">
+          <label class="form__label" for="meal-type-name">Name</label>
+          <input
+            class="form__input"
+            id="meal-type-name"
+            name="name"
+            type="text"
+            maxlength="120"
+            required
+            value="{{ submitted.get('name', '') if submitted else '' }}"
+          >
+          <p class="form__hint">What the customer reads, like “Weekend brunch”.</p>
+        </div>
+
+        <div class="form__field">
+          <label class="form__label" for="meal-type-slug">Slug</label>
+          <input
+            class="form__input"
+            id="meal-type-slug"
+            name="slug"
+            type="text"
+            maxlength="120"
+            value="{{ submitted.get('slug', '') if submitted else '' }}"
+          >
+          <p class="form__hint">
+            The address: <code>/menu/weekend-brunch</code>. Leave it blank and
+            it is made from the name.
+          </p>
+        </div>
+      </div>
+
+      <div class="form__actions">
+        <button class="btn" type="submit">Add meal type</button>
+      </div>
+    </form>
+  </section>
+
+  {% if listing.is_empty %}
+    <p class="notice" role="status">
+      No meal types yet. Until there is at least one, <code>/menu</code> reaches
+      nothing and the dish editor has no meal types to offer.
+    </p>
+  {% else %}
+    <ul class="admin-list">
+      {% for row in listing.rows %}
+        {% set meal_type = row.meal_type %}
+        <li class="admin-item">
+          <div class="admin-item__head">
+            <h2 class="admin-item__name">
+              <a href="{{ url_for('chef.edit_meal_type', meal_type_id=meal_type.id) }}">
+                {{ meal_type.name }}
+              </a>
+            </h2>
+          </div>
+
+          <p class="admin-item__meta">
+            {#
+              How many dishes use this, spelled out. It decides whether the
+              delete control is offered, so the page says the same thing the
+              control does rather than leaving the chef to infer it from an
+              absence.
+            #}
+            /menu/{{ meal_type.slug }} — {{ row.usage_label }}
+          </p>
+
+          <div class="admin-item__actions">
+            <a
+              class="btn btn--ghost"
+              href="{{ url_for('chef.edit_meal_type', meal_type_id=meal_type.id) }}"
+            >Rename {{ meal_type.name }}</a>
+
+            <a
+              class="btn btn--ghost"
+              href="{{ url_for('public.menu', meal_type_slug=meal_type.slug) }}"
+            >View the {{ meal_type.name }} menu</a>
+
+            {#
+              Deletion is offered only where it can succeed. A meal type a
+              dish still points at says why instead of showing a button
+              whose only outcome is a refusal — the same rule the catalogue
+              list keeps for availability.
+            #}
+            {% if row.can_be_deleted %}
+              {{ meal_type_action(
+                   url_for('chef.delete_meal_type', meal_type_id=meal_type.id),
+                   'Delete ' ~ meal_type.name, {}, true) }}
+            {% else %}
+              <p class="admin-item__blocked">
+                Take this meal type off its dishes before deleting it — a dish
+                pointing at a deleted meal type is a broken menu link.
+              </p>
+            {% endif %}
+
+            {% if not loop.first %}
+              {{ meal_type_action(
+                   url_for('chef.move_meal_type', meal_type_id=meal_type.id),
+                   'Move ' ~ meal_type.name ~ ' up', {'direction': 'up'}) }}
+            {% endif %}
+            {% if not loop.last %}
+              {{ meal_type_action(
+                   url_for('chef.move_meal_type', meal_type_id=meal_type.id),
+                   'Move ' ~ meal_type.name ~ ' down', {'direction': 'down'}) }}
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}
