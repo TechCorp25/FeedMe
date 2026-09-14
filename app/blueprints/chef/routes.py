@@ -193,10 +193,18 @@ def _item_or_404(kind: str, item_id: str):
 
 
 def _list_redirect(kind: str):
-    """Back to the list, still showing archived items if it was."""
+    """Back to the list, still filtered the way it was.
+
+    Read off the submitted form rather than remembered in the session,
+    the same way the order queue carries its filter: the page the chef
+    posted from is the page they expect to land on, and a session would
+    make two open tabs fight over it.
+    """
     arguments = {}
     if request.form.get("include_archived"):
         arguments["archived"] = "1"
+    if request.form.get("attention_only"):
+        arguments["attention"] = "1"
     return redirect(url_for(f"chef.{catalogue_admin.PLURAL[kind]}", **arguments))
 
 
@@ -213,10 +221,19 @@ def dishes() -> str:
 
 
 def _render_admin_list(kind: str) -> str:
-    include_archived = bool(request.args.get("archived"))
+    """The catalogue list, optionally narrowed to what needs attention.
+
+    Both filters are plain query-string flags set by links, so the list
+    works with JavaScript disabled and every view of it is a URL the chef
+    can bookmark or leave open.
+    """
     return render_template(
         "chef/catalogue_list.html",
-        listing=catalogue_admin.admin_list(kind, include_archived=include_archived),
+        listing=catalogue_admin.admin_list(
+            kind,
+            include_archived=bool(request.args.get("archived")),
+            attention_only=bool(request.args.get("attention")),
+        ),
     )
 
 

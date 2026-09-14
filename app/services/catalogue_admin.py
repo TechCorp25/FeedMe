@@ -531,12 +531,60 @@ class AdminRow:
         """Publication is gated on the allergen review (01-DOMAIN.md)."""
         return self.item.allergens.is_reviewed and not self.item.is_archived
 
+    @property
+    def attention_reasons(self) -> list[str]:
+        """Why this item's declaration wants the chef's eye, in words.
+
+        Four states, and they are deliberately reported *together* here
+        rather than each on its own page. The wheat/gluten split shipped
+        with no migration on purpose — a compliance record rewritten by a
+        script is a record nobody authored — and that decision rests
+        entirely on the chef being able to find the affected items. They
+        could not: `uses_retired_vocabulary` and `sulphites_mirror_disagrees`
+        were rendered only on an item's own allergen editor, so you had to
+        already be looking at the item to learn it needed looking at.
+
+        Words, never a colour. The list already does this correctly for
+        `status_chip` and this follows it.
+        """
+        block = self.item.allergens
+        reasons: list[str] = []
+        if not block.is_reviewed:
+            reasons.append("The allergen declaration has never been reviewed")
+        elif self.item.allergen_review_is_stale:
+            # `elif`: an unreviewed item is not "stale", it is unreviewed —
+            # a different state with different wording and a harder rule
+            # (01-DOMAIN.md). Saying both would be saying one of them wrong.
+            reasons.append(
+                "The ingredients changed after the declaration was last reviewed"
+            )
+        if block.uses_retired_vocabulary:
+            reasons.append(
+                "The declaration uses wording that has been retired — it "
+                "predates the wheat and gluten split"
+            )
+        if block.sulphites_mirror_disagrees:
+            reasons.append(
+                "The sulphites threshold flag and the declaration disagree"
+            )
+        return reasons
+
+    @property
+    def needs_allergen_attention(self) -> bool:
+        return bool(self.attention_reasons)
+
 
 @dataclass(frozen=True)
 class AdminList:
     kind: str
     rows: list[AdminRow]
     include_archived: bool
+    #: Narrowed to the items whose declaration wants attention.
+    attention_only: bool = False
+    #: How many want attention across the whole list, filtered or not, so
+    #: the control can say what it will show before it is used — and so a
+    #: filtered page can say what it is a subset of.
+    attention_count: int = 0
 
     @property
     def plural_url(self) -> str:
@@ -547,16 +595,32 @@ class AdminList:
         return not self.rows
 
 
-def admin_list(kind: str, *, include_archived: bool = False) -> AdminList:
+def admin_list(
+    kind: str, *, include_archived: bool = False, attention_only: bool = False
+) -> AdminList:
     items = (
         components_repo.chef_list_components(include_archived)
         if kind == COMPONENT
         else dishes_repo.chef_list_dishes(include_archived)
     )
+    rows = [AdminRow(item=item, kind=kind) for item in items]
+    # Counted before the filter, so a narrowed page still knows the whole
+    # figure. Three of the four states are derived from the stored block
+    # rather than stored as fields — staleness is two timestamps compared,
+    # and the vocabulary and mirror checks read the block's contents — so
+    # this is a pass over the list rather than a query. That is the right
+    # trade for a chef's catalogue, which is bounded by how much one
+    # person can author; it would not be for the customer-facing reads,
+    # which stay queries.
+    attention_count = sum(1 for row in rows if row.needs_allergen_attention)
     return AdminList(
         kind=kind,
-        rows=[AdminRow(item=item, kind=kind) for item in items],
+        rows=[row for row in rows if row.needs_allergen_attention]
+        if attention_only
+        else rows,
         include_archived=include_archived,
+        attention_only=attention_only,
+        attention_count=attention_count,
     )
 
 
