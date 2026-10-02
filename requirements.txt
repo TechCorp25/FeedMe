@@ -6,7 +6,7 @@ pymongo==4.8.0
 dnspython==2.6.1
 pydantic==2.8.2
 argon2-cffi==23.1.0
-PyJWT==2.13.0
+PyJWT==2.15.0
 python-dotenv==1.2.2
 # The IANA zone database. Present on most Linux hosts, absent from slim
 # container images — and `BUSINESS_TIMEZONE` has to resolve wherever this
