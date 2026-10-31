@@ -3,7 +3,7 @@ Flask-Login==0.6.3
 Flask-WTF==1.2.1
 pymongo==4.8.0
 # mongodb+srv:// URIs (MongoDB Atlas) resolve through DNS SRV records.
-dnspython==2.6.1
+dnspython==2.9.0
 pydantic==2.8.2
 argon2-cffi==23.1.0
 PyJWT==2.13.0
